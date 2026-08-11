@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="Frontol File Analyzer">
+  <rect x="16" y="16" width="480" height="480" rx="72" fill="#142B42"/>
+  <rect x="28" y="28" width="456" height="456" rx="60" fill="none" stroke="#244B6B" stroke-width="8"/>
+  <path d="M92 142H210M302 142H420M92 256H210M302 256H420M92 370H210M302 370H420"
+        fill="none" stroke="#F5F7FA" stroke-width="28" stroke-linecap="round"/>
+  <circle cx="256" cy="190" r="22" fill="#3FA9F5"/>
+  <path d="M278 258c0 31-14 55-45 72l-14-24c17-11 25-23 27-36h-17v-46h49z" fill="#3FA9F5"/>
+</svg>

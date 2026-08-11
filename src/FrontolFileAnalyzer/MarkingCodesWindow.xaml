@@ -1,0 +1,65 @@
+<Window x:Class="FrontolFileAnalyzer.MarkingCodesWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Справочник кодов номенклатуры и маркировки"
+        Width="760" Height="650" MinWidth="600" MinHeight="460"
+        WindowStartupLocation="CenterOwner"
+        Background="#F0F0F0"
+        ShowInTaskbar="False">
+    <Grid Margin="8">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+            <RowDefinition Height="Auto" />
+        </Grid.RowDefinitions>
+
+        <Border Grid.Row="0" Padding="8" Background="White" BorderBrush="#CFCFCF" BorderThickness="1">
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="220" />
+                </Grid.ColumnDefinitions>
+                <StackPanel>
+                    <TextBlock FontSize="15" FontWeight="SemiBold" Text="Коды типа номенклатуры / маркировки" />
+                    <TextBlock Margin="0,3,0,0" Foreground="#555555" Text="Поле 55 товарных команд Frontol. Значение по умолчанию - 0." />
+                </StackPanel>
+                <TextBox Grid.Column="1" Margin="12,0,0,0" VerticalAlignment="Center"
+                         TextChanged="Search_TextChanged" ToolTip="Поиск по коду и наименованию" />
+            </Grid>
+        </Border>
+
+        <TabControl Grid.Row="1" Margin="0,6,0,6">
+            <TabItem Header="Типы номенклатуры">
+                <DataGrid x:Name="CodesGrid" ItemsSource="{Binding CodesView}" AutoGenerateColumns="False" IsReadOnly="True"
+                          CanUserAddRows="False" CanUserDeleteRows="False" GridLinesVisibility="All"
+                          RowHeaderWidth="0" AlternatingRowBackground="#F8F8F8">
+                    <DataGrid.Columns>
+                        <DataGridTextColumn Header="Код" Binding="{Binding Code}" Width="90" />
+                        <DataGridTextColumn Header="Наименование" Binding="{Binding Name}" Width="*" />
+                        <DataGridTextColumn Header="Где используется" Binding="{Binding Description}" Width="250" />
+                    </DataGrid.Columns>
+                </DataGrid>
+            </TabItem>
+            <TabItem Header="Связанные параметры маркировки">
+                <DataGrid ItemsSource="{Binding RelatedCodes}" AutoGenerateColumns="False" IsReadOnly="True"
+                          CanUserAddRows="False" CanUserDeleteRows="False" GridLinesVisibility="All"
+                          RowHeaderWidth="0" AlternatingRowBackground="#F8F8F8">
+                    <DataGrid.Columns>
+                        <DataGridTextColumn Header="Поле и код" Binding="{Binding Code}" Width="110" />
+                        <DataGridTextColumn Header="Значение" Binding="{Binding Name}" Width="*" />
+                        <DataGridTextColumn Header="Примечание" Binding="{Binding Description}" Width="260" />
+                    </DataGrid.Columns>
+                </DataGrid>
+            </TabItem>
+        </TabControl>
+
+        <DockPanel Grid.Row="2">
+            <TextBlock VerticalAlignment="Center" Foreground="#555555"
+                       Text="Источник: Руководство интегратора Frontol 6, поле 55, страницы 195-198." />
+            <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" HorizontalAlignment="Right">
+                <Button Margin="6,0,0,0" Click="CopySelected_Click" Content="Копировать выбранное" />
+                <Button Margin="6,0,0,0" IsDefault="True" Click="Close_Click" Content="Закрыть" />
+            </StackPanel>
+        </DockPanel>
+    </Grid>
+</Window>

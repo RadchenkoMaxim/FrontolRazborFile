@@ -1,0 +1,5 @@
+<Solution>
+  <Project Path="src/FrontolFileAnalyzer.Core/FrontolFileAnalyzer.Core.csproj" />
+  <Project Path="src/FrontolFileAnalyzer/FrontolFileAnalyzer.csproj" />
+  <Project Path="tests/FrontolFileAnalyzer.SmokeTests/FrontolFileAnalyzer.SmokeTests.csproj" />
+</Solution>

@@ -1,0 +1,20 @@
+# Visual Studio / .NET build output
+.vs/
+**/bin/
+**/obj/
+*.user
+*.suo
+
+# Local tooling and generated packages
+artifacts/
+tools/
+
+# Codex working memory
+.ai/
+.codex/
+.agents/
+
+# OS files
+Thumbs.db
+Desktop.ini
+.DS_Store
