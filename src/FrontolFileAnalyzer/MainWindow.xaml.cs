@@ -201,6 +201,18 @@ public partial class MainWindow : Window, INotifyPropertyChanged
             return;
         }
 
+        var commandsScreenshotIndex = Array.FindIndex(arguments, argument => argument.Equals("--screenshot-commands", StringComparison.OrdinalIgnoreCase));
+        if (commandsScreenshotIndex >= 0 && arguments.Length > commandsScreenshotIndex + 1)
+        {
+            var window = new CommandReferenceWindow { Owner = this };
+            window.Show();
+            await Dispatcher.InvokeAsync(window.UpdateLayout, System.Windows.Threading.DispatcherPriority.ApplicationIdle);
+            SaveWindowScreenshot(window, arguments[commandsScreenshotIndex + 1]);
+            window.Close();
+            Close();
+            return;
+        }
+
         var fieldsScreenshotIndex = Array.FindIndex(arguments, argument => argument.Equals("--screenshot-fields", StringComparison.OrdinalIgnoreCase));
         if (fieldsScreenshotIndex >= 0 && arguments.Length > fieldsScreenshotIndex + 2)
         {
@@ -319,6 +331,9 @@ public partial class MainWindow : Window, INotifyPropertyChanged
 
     private void MarkingCodes_Click(object sender, RoutedEventArgs e) =>
         new MarkingCodesWindow { Owner = this }.ShowDialog();
+
+    private void CommandReference_Click(object sender, RoutedEventArgs e) =>
+        new CommandReferenceWindow { Owner = this }.ShowDialog();
 
     private void About_Click(object sender, RoutedEventArgs e) =>
         new AboutWindow { Owner = this }.ShowDialog();

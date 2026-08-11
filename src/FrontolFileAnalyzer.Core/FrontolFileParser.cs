@@ -156,7 +156,8 @@ public sealed class FrontolFileParser
             };
         }
 
-        var fieldCount = Math.Max(values.Length, definition.Fields.Count);
+        var resolvedDefinitions = definition.ResolveFields(values);
+        var fieldCount = Math.Max(values.Length, resolvedDefinitions.Count);
         var fields = new List<AnalyzedField>(fieldCount);
         var issues = new List<AnalysisIssue>();
 
@@ -166,7 +167,7 @@ public sealed class FrontolFileParser
             var wasProvided = index < values.Length;
             var rawValue = wasProvided ? values[index] : string.Empty;
 
-            if (index >= definition.Fields.Count)
+            if (index >= resolvedDefinitions.Count)
             {
                 var trailingEmpty = rawValue.Length == 0 && index == values.Length - 1;
                 var extraSeverity = trailingEmpty ? IssueSeverity.Info : IssueSeverity.Error;
@@ -190,7 +191,7 @@ public sealed class FrontolFileParser
                 continue;
             }
 
-            var fieldDefinition = definition.Fields[index];
+            var fieldDefinition = resolvedDefinitions[index];
             var (severity, diagnostic) = Validate(fieldDefinition, rawValue);
             if (severity != IssueSeverity.None)
             {
@@ -220,25 +221,25 @@ public sealed class FrontolFileParser
             CommandName = definition.Name,
             Definition = definition,
             Title = $"Данные · $$${definition.Name}",
-            Summary = BuildSummary(definition, values),
+            Summary = BuildSummary(definition, values, resolvedDefinitions.Count),
             Fields = fields,
             Issues = issues
         };
     }
 
-    private static string BuildSummary(CommandDefinition definition, IReadOnlyList<string> values)
+    private static string BuildSummary(CommandDefinition definition, IReadOnlyList<string> values, int resolvedFieldCount)
     {
         string Get(int number) => number <= values.Count ? values[number - 1] : string.Empty;
 
         return definition.Name switch
         {
             "ADDQUANTITY" or "REPLACEQUANTITY" or "REPLACEQUANTITYWITHOUTSALE" =>
-                $"Товар {Get(1)} · {EmptyAs(Get(3), "без наименования")} · передано полей: {values.Count}/{definition.Fields.Count}",
+                $"Товар {Get(1)} · {EmptyAs(Get(3), "без наименования")} · передано полей: {values.Count}/{resolvedFieldCount}",
             "DELETEBARCODESBYWARECODE" =>
                 string.IsNullOrEmpty(Get(2)) ? $"Товар {Get(1)} · удалить все штрихкоды" : $"Товар {Get(1)} · удалить {Get(2)}",
             "ADDCLASSIFIERLINKS" =>
-                $"Классификатор {Get(1)} → элемент {Get(3)} · передано полей: {values.Count}/{definition.Fields.Count}",
-            _ => $"Полей: {values.Count}/{definition.Fields.Count}"
+                $"Классификатор {Get(1)} → элемент {Get(3)} · передано полей: {values.Count}/{resolvedFieldCount}",
+            _ => $"Полей: {values.Count}/{resolvedFieldCount}"
         };
     }
 

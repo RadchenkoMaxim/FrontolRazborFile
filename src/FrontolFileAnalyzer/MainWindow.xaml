@@ -38,6 +38,7 @@
                 <MenuItem Header="Настроить видимость полей..." Click="ConfigureFields_Click" IsEnabled="{Binding CanConfigureFields}" />
             </MenuItem>
             <MenuItem Header="_Справка">
+                <MenuItem Header="Команды и поля загрузки" Click="CommandReference_Click" />
                 <MenuItem Header="Коды номенклатуры и маркировки" Click="MarkingCodes_Click" />
                 <Separator />
                 <MenuItem Header="О программе" Click="About_Click" />
@@ -50,7 +51,8 @@
                 <Button Click="OpenSourceFile_Click" IsEnabled="{Binding CanOpenCurrentFile}" Content="Открыть исходный" />
                 <Button Click="ShowInFolder_Click" IsEnabled="{Binding CanOpenCurrentFile}" Content="Показать в папке" />
                 <Separator />
-                <Button Click="MarkingCodes_Click" Content="Справочник маркировки" />
+                <Button Click="CommandReference_Click" Content="Команды и поля" />
+                <Button Click="MarkingCodes_Click" Content="Коды маркировки" />
                 <Separator />
                 <TextBlock Margin="6,0,4,0" VerticalAlignment="Center" Foreground="#555555" Text="Файл:" />
                 <TextBlock Width="390" Padding="4,0" VerticalAlignment="Center"

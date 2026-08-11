@@ -2,7 +2,7 @@
 
 Windows-приложение на C# и WPF для построчного разбора файлов загрузки Frontol 6.
 
-Текущая версия: **1.1.1**. Разработчик: [Maximum IT](https://maximumit25.ru/nfr).
+Текущая версия: **1.2.0**. Разработчик: [Maximum IT](https://maximumit25.ru/nfr).
 
 ## Что умеет
 
@@ -10,6 +10,8 @@ Windows-приложение на C# и WPF для построчного раз
 - показывает все физические строки файла: заголовок, команды, данные и комментарии;
 - разделяет строки данных по `;` с сохранением пустых и завершающих сегментов;
 - раскрывает товарные команды в таблицу из 68 полей;
+- знает все 124 командных раздела загрузки из руководства Frontol 6 и все описанные в них поля;
+- содержит отдельное окно «Команды и поля» с поиском, типами, обязательностью, значениями по умолчанию и ссылкой на раздел руководства;
 - показывает исходное значение, расшифровку, тип, обязательность и назначение поля;
 - расшифровывает флаги, тип номенклатуры/маркировки, единицу измерения и другие перечисления;
 - проверяет обязательные значения, типы, длину строк и лишние поля;
@@ -21,19 +23,11 @@ Windows-приложение на C# и WPF для построчного раз
 - позволяет скрыть список строк кнопкой на разделителе или сочетанием `Ctrl+M`;
 - показывает подробную многострочную расшифровку только там, где она действительно нужна.
 
-Встроенный справочник содержит команды:
-
-- `$$$ADDQUANTITY`;
-- `$$$REPLACEQUANTITY`;
-- `$$$REPLACEQUANTITYWITHOUTSALE`;
-- `$$$DELETEBARCODESBYWARECODE`;
-- `$$$ADDCLASSIFIERLINKS`.
-
-Для остальных команд приложение все равно разделяет строку на поля и показывает их номера, но сообщает, что подробного описания команды во встроенном справочнике пока нет.
+Встроенный справочник покрывает раздел 17.2.1 «Загрузка данных» целиком: 124 подраздела и 132 поддерживаемых имени команд с учетом опечаток-псевдонимов из руководства. Для команд `ADDMARKETINGEVENTS` и `ADDMARKETINGCONDITIONS` выбирается корректный набор полей из 19 и 24 вариантов.
 
 ## Запуск
 
-Готовая версия находится в `artifacts/FrontolFileAnalyzer-1.1.1-win-x64-self-contained`. Запустите единственный файл `FrontolFileAnalyzer.exe`, нажмите «Выбрать файл...» или перетащите файл обмена в окно.
+Готовая версия находится в `artifacts/FrontolFileAnalyzer-1.2.0-win-x64-self-contained`. Запустите единственный файл `FrontolFileAnalyzer.exe`, нажмите «Выбрать файл...» или перетащите файл обмена в окно.
 
 Сборка self-contained: .NET 10 Desktop Runtime x64 уже включен внутрь EXE. Устанавливать .NET отдельно не требуется.
 
@@ -43,7 +37,7 @@ Windows-приложение на C# и WPF для построчного раз
 dotnet restore .\FrontolFileAnalyzer.slnx --configfile .\NuGet.Config
 dotnet build .\FrontolFileAnalyzer.slnx -c Release --no-restore
 dotnet restore .\src\FrontolFileAnalyzer\FrontolFileAnalyzer.csproj -r win-x64 --configfile .\NuGet.SelfContained.Config
-dotnet publish .\src\FrontolFileAnalyzer\FrontolFileAnalyzer.csproj -c Release -r win-x64 --self-contained true --no-restore -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -p:EnableCompressionInSingleFile=true -o .\artifacts\FrontolFileAnalyzer-1.1.1-win-x64-self-contained
+dotnet publish .\src\FrontolFileAnalyzer\FrontolFileAnalyzer.csproj -c Release -r win-x64 --self-contained true --no-restore -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -p:EnableCompressionInSingleFile=true -o .\artifacts\FrontolFileAnalyzer-1.2.0-win-x64-self-contained
 ```
 
 Проверка на приложенном примере:
@@ -59,4 +53,5 @@ dotnet run --no-restore --project .\tests\FrontolFileAnalyzer.SmokeTests\Frontol
 - товарные команды - раздел 17.2.1.1, страницы 190-200;
 - коды типа номенклатуры/маркировки - поле 55, страницы 195-198;
 - удаление штрихкодов товара - раздел 17.2.1.4, страница 200;
-- связь с классификатором - раздел 17.2.1.48, страница 253.
+- все команды загрузки — разделы 17.2.1.1–17.2.1.124, страницы 190–272;
+- связь с классификатором - раздел 17.2.1.92, страницы 253–254.

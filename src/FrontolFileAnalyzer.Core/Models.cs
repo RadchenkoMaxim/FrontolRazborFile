@@ -32,14 +32,48 @@ public sealed record FieldDefinition(
     string Purpose,
     string? DefaultValue = null,
     IReadOnlyDictionary<string, string>? Values = null,
-    Func<string, string?>? CustomInterpreter = null);
+    Func<string, string?>? CustomInterpreter = null)
+{
+    public string RequiredText => Required ? "Да" : "Нет";
+}
+
+public sealed record CommandVariant(
+    string Key,
+    string DisplayName,
+    IReadOnlyList<FieldDefinition> Fields)
+{
+    public string DisplayText => $"{Key} — {DisplayName}";
+}
 
 public sealed record CommandDefinition(
     string Name,
     string DisplayName,
     string Description,
     string ManualReference,
-    IReadOnlyList<FieldDefinition> Fields);
+    IReadOnlyList<FieldDefinition> Fields,
+    IReadOnlyList<CommandVariant>? Variants = null,
+    int? VariantFieldNumber = null)
+{
+    public bool HasVariants => Variants is { Count: > 0 };
+    public bool HasFields => Fields.Count > 0 || HasVariants;
+    public int MaximumFieldCount => HasVariants ? Variants!.Max(variant => variant.Fields.Count) : Fields.Count;
+    public string CommandText => $"$$${Name}";
+    public string FieldCountText => HasVariants
+        ? $"Вариантов: {Variants!.Count} · до {MaximumFieldCount} полей"
+        : HasFields ? $"Полей: {Fields.Count}" : "Данных нет";
+
+    public IReadOnlyList<FieldDefinition> ResolveFields(IReadOnlyList<string> values)
+    {
+        if (!HasVariants || VariantFieldNumber is null || VariantFieldNumber <= 0 || values.Count < VariantFieldNumber)
+        {
+            return Fields;
+        }
+
+        var key = values[VariantFieldNumber.Value - 1];
+        return Variants!.FirstOrDefault(variant => string.Equals(variant.Key, key, StringComparison.OrdinalIgnoreCase))?.Fields
+               ?? Fields;
+    }
+}
 
 public sealed class AnalyzedField
 {

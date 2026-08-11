@@ -2,9 +2,12 @@ using System.Collections.ObjectModel;
 
 namespace FrontolFileAnalyzer.Core;
 
-public static class FrontolCommandCatalog
+public static partial class FrontolCommandCatalog
 {
     private static readonly IReadOnlyDictionary<string, CommandDefinition> Commands = BuildCommands();
+
+    public static IReadOnlyList<CommandDefinition> All { get; } =
+        Commands.Values.OrderBy(definition => definition.Name, StringComparer.Ordinal).ToArray();
 
     public static bool TryGet(string commandName, out CommandDefinition definition) =>
         Commands.TryGetValue(Normalize(commandName), out definition!);
@@ -49,17 +52,124 @@ public static class FrontolCommandCatalog
                         : $"Будет удален только штрихкод {value}")
             ]));
 
+        AddNoData(commands,
+            "DELETEALLWARES",
+            "Удалить все товары",
+            "Удаляет все товары из справочника Frontol.",
+            "Руководство интегратора Frontol 6: раздел 17.2.1.2, стр. 200");
+        AddNoData(commands,
+            "DELETEALLBARCODES",
+            "Удалить все штрихкоды",
+            "Удаляет все штрихкоды товаров.",
+            "Руководство интегратора Frontol 6: раздел 17.2.1.22, стр. 208");
+        AddNoData(commands,
+            "DELETEALLASPECTREMAINS",
+            "Удалить все остатки по разрезам",
+            "Удаляет все остатки товаров, ведущиеся по разрезам.",
+            "Руководство интегратора Frontol 6: раздел 17.2.1.7, стр. 202");
+
+        Add(commands, new CommandDefinition(
+            "ADDTAXRATES",
+            "Добавить налоговые ставки",
+            "Создает или обновляет налоговые ставки.",
+            "Руководство интегратора Frontol 6: раздел 17.2.1.50, стр. 217",
+            [
+                F(1, "Код", true, "Целое", "Код налоговой ставки"),
+                F(2, "Наименование", false, "Строка 100", "Наименование налоговой ставки"),
+                F(3, "Текст", false, "Строка 100", "Дополнительный текст налоговой ставки"),
+                F(4, "Тип налога", true, "Целое", "Способ расчета налога", values: Map(
+                    ("0", "Процентный налог"), ("1", "Суммовой налог"))),
+                F(5, "Значение налога", true, "Дробное", "Процент или сумма налога"),
+                F(6, "Номер налога в ККМ", false, "Целое", "Ставка налога для онлайн-ККТ", "0", Map(
+                    ("0", "Использовать налог из секции"),
+                    ("1", "НДС 0%"),
+                    ("2", "НДС 10%"),
+                    ("3", "НДС 20%"),
+                    ("4", "НДС не облагается"),
+                    ("5", "НДС с расчетной ставкой 10%"),
+                    ("6", "НДС с расчетной ставкой 20%"),
+                    ("7", "НДС 5%"),
+                    ("8", "НДС 7%"),
+                    ("9", "НДС с расчетной ставкой 5%"),
+                    ("10", "НДС с расчетной ставкой 7%"),
+                    ("11", "НДС 22%"),
+                    ("12", "НДС с расчетной ставкой 22%")))
+            ]));
+        AddNoData(commands,
+            "DELETEALLTAXRATES",
+            "Удалить все налоговые ставки",
+            "Удаляет все налоговые ставки.",
+            "Руководство интегратора Frontol 6: раздел 17.2.1.51, стр. 217");
+
+        Add(commands, new CommandDefinition(
+            "ADDTAXGROUPS",
+            "Добавить налоговые группы",
+            "Создает или обновляет налоговые группы.",
+            "Руководство интегратора Frontol 6: раздел 17.2.1.52, стр. 218",
+            [
+                F(1, "Код", true, "Целое", "Код налоговой группы"),
+                F(2, "Наименование", false, "Строка 100", "Наименование налоговой группы"),
+                F(3, "Текст", false, "Строка 100", "Дополнительный текст налоговой группы")
+            ]));
+        AddNoData(commands,
+            "DELETEALLTAXGROUPS",
+            "Удалить все налоговые группы",
+            "Удаляет все налоговые группы.",
+            "Руководство интегратора Frontol 6: раздел 17.2.1.53, стр. 218");
+
+        Add(commands, new CommandDefinition(
+            "ADDTAXGROUPRATES",
+            "Добавить налоговые ставки группы",
+            "Связывает налоговую ставку с налоговой группой.",
+            "Руководство интегратора Frontol 6: раздел 17.2.1.54, стр. 218",
+            [
+                F(1, "Код", true, "Целое", "Код связи налоговой ставки группы"),
+                F(2, "Код налоговой группы", true, "Целое", "Связываемая налоговая группа"),
+                F(3, "Код налоговой ставки", true, "Целое", "Связываемая налоговая ставка"),
+                F(4, "Смена базы", true, "Целое", "Признак смены налоговой базы", values: Map(
+                    ("0", "Нет"), ("1", "Да")))
+            ]));
+        AddNoData(commands,
+            "DELETEALLTAXGROUPRATES",
+            "Удалить все налоговые ставки группы",
+            "Удаляет все связи налоговых ставок с налоговыми группами.",
+            "Руководство интегратора Frontol 6: раздел 17.2.1.55, стр. 218");
+
+        Add(commands, new CommandDefinition(
+            "ADDCLASSIFIERS",
+            "Добавить классификаторы",
+            "Создает или обновляет классификаторы и группы классификаторов.",
+            "Руководство интегратора Frontol 6: раздел 17.2.1.90, стр. 253",
+            [
+                F(1, "Код классификатора", true, "Целое", "Код классификатора или группы"),
+                F(2, "Код группы классификаторов", false, "Целое", "Родительская группа классификаторов"),
+                F(3, "Классификатор или группа", false, "Целое", "Вид создаваемого элемента", "0", Map(
+                    ("0", "Классификатор"), ("1", "Группа классификаторов"))),
+                F(4, "Наименование классификатора", false, "Строка 255", "Наименование классификатора или группы"),
+                F(5, "Текст", false, "Строка 255", "Дополнительный текст")
+            ]));
+        AddNoData(commands,
+            "DELETEALLCLASSIFIERS",
+            "Удалить все классификаторы",
+            "Удаляет все классификаторы и их группы.",
+            "Руководство интегратора Frontol 6: раздел 17.2.1.91, стр. 253");
+
         Add(commands, new CommandDefinition(
             "ADDCLASSIFIERLINKS",
             "Добавить связь с классификатором",
             "Связывает товар, клиента, карту или предприятие с классификатором.",
-            "Руководство интегратора Frontol 6: раздел 17.2.1.48, стр. 253",
+            "Руководство интегратора Frontol 6: раздел 17.2.1.92, стр. 253",
             [
                 F(1, "Код классификатора", true, "Целое", "Классификатор"),
                 F(2, "Тип элемента", true, "Целое", "Тип связываемого элемента", values: Map(
                     ("1", "Товар"), ("2", "Клиент"), ("3", "Карта клиента"), ("4", "Предприятие"))),
                 F(3, "Идентификатор элемента", true, "Строка 40 / целое", "Код или иной идентификатор элемента")
             ]));
+
+        AddCommands190To220(commands);
+        AddCommands221To245(commands);
+        AddCommands246To263(commands);
+        AddCommands264To272(commands);
 
         return new ReadOnlyDictionary<string, CommandDefinition>(commands);
     }
@@ -131,7 +241,7 @@ public static class FrontolCommandCatalog
         F(55, "Тип номенклатуры / маркировки", false, "Целое", "Категория товара и маркированной продукции", "0", FrontolReferenceCatalog.ProductTypeValues),
         F(56, "Акцизная марка алкоголя", false, "Целое", "Признак акцизной марки", "0", Map(
             ("0", "С акцизной маркой"), ("1", "Без акцизной марки"))),
-        F(57, "Крепость", false, "Дробное", "Крепость алкогольной/спиртосодержащей продукции, %", "0,1", custom: value => WithUnit(value, "Крепость", "%")),
+        F(57, "Крепость", false, "Дробное***", "Крепость алкогольной/спиртосодержащей продукции, %; допустимо 0,001–100,000", "0,1", custom: value => WithUnit(value, "Крепость", "%")),
         F(58, "Способ расчета", false, "Целое", "Признак способа расчета", "2", Map(
             ("1", "Аванс"), ("2", "Полный расчет"))),
         F(59, "Реквизиты агента", false, "Целое", "Код реквизитов агента"),
@@ -173,7 +283,7 @@ public static class FrontolCommandCatalog
         [
             "Дробное количество", "Продажа", "Возврат", "Отрицательные остатки", "Без ввода количества",
             "Списание остатков", "Редактирование цены", "Ручной ввод количества", "Печать в документе",
-            "Неделимый товар", "Скидки", "Запрос цены", "Запрос штрихкода", "Округление", "Деление упаковки"
+            "Наливаемый товар", "Скидки", "Запрос цены", "Запрос штрихкода", "Округление", "Деление упаковки"
         ];
         var flags = value.Split(',', StringSplitOptions.TrimEntries);
         return string.Join(" · ", names.Select((name, index) =>
@@ -220,5 +330,13 @@ public static class FrontolCommandCatalog
         new ReadOnlyDictionary<string, string>(values.ToDictionary(pair => pair.Key, pair => pair.Value, StringComparer.OrdinalIgnoreCase));
 
     private static void Add(IDictionary<string, CommandDefinition> commands, CommandDefinition definition) =>
-        commands.Add(definition.Name, definition);
+        commands[definition.Name] = definition;
+
+    private static void AddNoData(
+        IDictionary<string, CommandDefinition> commands,
+        string name,
+        string displayName,
+        string description,
+        string manualReference) =>
+        Add(commands, new CommandDefinition(name, displayName, description, manualReference, []));
 }

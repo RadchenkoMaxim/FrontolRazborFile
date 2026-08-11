@@ -8,6 +8,7 @@
 # Local tooling and generated packages
 artifacts/
 tools/
+tmp/
 
 # Codex working memory
 .ai/
