@@ -113,8 +113,16 @@
                         <ComboBoxItem Content="Структура файла" />
                     </ComboBox>
                     <TextBlock Margin="10,0,4,0" VerticalAlignment="Center" Text="Команда:" />
-                    <ComboBox Width="190" ItemsSource="{Binding CommandFilters}" SelectedItem="{Binding SelectedCommandFilter, Mode=TwoWay}"
-                              DisplayMemberPath="DisplayText" />
+                    <ComboBox Width="390" MaxDropDownHeight="430" ItemsSource="{Binding CommandFilters}"
+                              SelectedItem="{Binding SelectedCommandFilter, Mode=TwoWay}"
+                              ToolTip="{Binding SelectedItem.Description, RelativeSource={RelativeSource Self}}">
+                        <ComboBox.ItemTemplate>
+                            <DataTemplate>
+                                <TextBlock MaxWidth="610" Text="{Binding DisplayText}" TextTrimming="CharacterEllipsis"
+                                           ToolTip="{Binding Description}" ToolTipService.InitialShowDelay="300" />
+                            </DataTemplate>
+                        </ComboBox.ItemTemplate>
+                    </ComboBox>
                     <TextBlock Margin="10,0,4,0" VerticalAlignment="Center" Text="Состояние:" />
                     <ComboBox x:Name="SeverityFilterBox" Width="165" SelectedIndex="0" SelectionChanged="Filter_SelectionChanged">
                         <ComboBoxItem Content="Все строки" />
@@ -382,7 +390,12 @@
                                     Content="Настроить поля..." />
                             <Button Margin="6,0,0,0" Padding="8,2" Click="EditField_Click"
                                     IsEnabled="{Binding DataContext.CanEditSelectedField, RelativeSource={RelativeSource AncestorType=Window}}"
-                                    Content="Изменить значение..." />
+                                    ToolTip="Изменить исходное значение выбранного поля и повторно проверить строку (F2)">
+                                <StackPanel Orientation="Horizontal">
+                                    <Path Style="{StaticResource ToolbarIcon}" Data="{StaticResource IconEdit}" />
+                                    <TextBlock Text="Изменить выбранное поле (F2)" />
+                                </StackPanel>
+                            </Button>
                         </StackPanel>
                         <TextBlock DockPanel.Dock="Right" VerticalAlignment="Center" Foreground="#555555"
                                    Text="{Binding DataContext.FieldVisibilityLabel, RelativeSource={RelativeSource AncestorType=Window}}" />

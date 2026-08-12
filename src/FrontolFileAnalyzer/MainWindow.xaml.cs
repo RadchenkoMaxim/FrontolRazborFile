@@ -758,6 +758,12 @@ public partial class MainWindow : Window, INotifyPropertyChanged
             e.Handled = true;
         }
 
+        if (e.Key == Key.F2 && CanEditSelectedField)
+        {
+            EditField_Click(sender, new RoutedEventArgs());
+            e.Handled = true;
+        }
+
         if (e.Key == Key.S && Keyboard.Modifiers.HasFlag(ModifierKeys.Control))
         {
             if (Keyboard.Modifiers.HasFlag(ModifierKeys.Shift))
@@ -1039,6 +1045,8 @@ public partial class MainWindow : Window, INotifyPropertyChanged
             return;
         }
 
+        SelectedField = field;
+
         var header = cell.Column.Header?.ToString() ?? string.Empty;
         SelectedCellText = header switch
         {
@@ -1280,12 +1288,20 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         var options = records
             .Where(record => !string.IsNullOrWhiteSpace(record.CommandName))
             .GroupBy(record => record.CommandName!, StringComparer.OrdinalIgnoreCase)
-            .Select(group => new CommandFilterOption(group.Key, group.Count()))
+            .Select(group =>
+            {
+                var definition = group.Select(record => record.Definition).FirstOrDefault(item => item is not null);
+                return new CommandFilterOption(
+                    group.Key,
+                    definition?.DisplayName ?? "Назначение не описано",
+                    definition?.Description ?? "Для этой команды пока отсутствует встроенное описание.",
+                    group.Count());
+            })
             .OrderBy(option => option.CommandName, StringComparer.OrdinalIgnoreCase)
             .ToArray();
 
         _commandFilters.Clear();
-        _commandFilters.Add(new CommandFilterOption(null, records.Count));
+        _commandFilters.Add(new CommandFilterOption(null, "Все команды", "Не ограничивать строки по команде.", records.Count));
         foreach (var option in options)
         {
             _commandFilters.Add(option);
@@ -1608,11 +1624,15 @@ public sealed class MarkingFilterOption(string? code, string name, int count)
         : $"{Code} — {Name} ({Count:N0})";
 }
 
-public sealed class CommandFilterOption(string? commandName, int count)
+public sealed class CommandFilterOption(string? commandName, string displayName, string description, int count)
 {
     public string? CommandName { get; } = commandName;
+    public string DisplayName { get; } = displayName;
+    public string Description { get; } = description;
     public int Count { get; } = count;
-    public string DisplayText => CommandName is null ? $"Все команды ({Count:N0})" : $"$$${CommandName} ({Count:N0})";
+    public string DisplayText => CommandName is null
+        ? $"Все команды ({Count:N0})"
+        : $"$$${CommandName} — {DisplayName} ({Count:N0})";
 }
 
 internal sealed record RecordColumnState(

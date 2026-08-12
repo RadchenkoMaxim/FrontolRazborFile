@@ -2,7 +2,7 @@
 
 Windows-приложение на C# и WPF для построчного разбора файлов загрузки Frontol 6.
 
-Текущая версия: **1.4.0**. Разработчик: [Maximum IT](https://maximumit25.ru/nfr).
+Текущая версия: **1.4.1**. Разработчик: [Maximum IT](https://maximumit25.ru/nfr).
 
 ## Что умеет
 
@@ -35,12 +35,13 @@ Windows-приложение на C# и WPF для построчного раз
 - поддерживает мультивыбор видов маркировки, последние открытые файлы и переход к физической строке по `Ctrl+G`;
 - показывает сводную статистику файла и распределение товаров по видам маркировки;
 - отображает пустые значения как «не передано» и показывает полные значения обрезанных ячеек во всплывающих подсказках.
+- подписывает назначение каждой команды в фильтре и заголовках групп, а подробное действие показывает при наведении.
 
 Встроенный справочник покрывает раздел 17.2.1 «Загрузка данных» целиком: 124 подраздела и 132 поддерживаемых имени команд с учетом опечаток-псевдонимов из руководства. Для команд `ADDMARKETINGEVENTS` и `ADDMARKETINGCONDITIONS` выбирается корректный набор полей из 19 и 24 вариантов.
 
 ## Запуск
 
-Готовая версия находится в `artifacts/FrontolFileAnalyzer-1.4.0-win-x64-self-contained`. Запустите единственный файл `FrontolFileAnalyzer.exe`, нажмите «Открыть» или перетащите файл обмена в окно.
+Готовая версия находится в `artifacts/FrontolFileAnalyzer-1.4.1-win-x64-self-contained`. Запустите единственный файл `FrontolFileAnalyzer.exe`, нажмите «Открыть» или перетащите файл обмена в окно.
 
 Сборка self-contained: .NET 10 Desktop Runtime x64 уже включен внутрь EXE. Устанавливать .NET отдельно не требуется.
 
@@ -50,7 +51,7 @@ Windows-приложение на C# и WPF для построчного раз
 dotnet restore .\FrontolFileAnalyzer.slnx --configfile .\NuGet.Config
 dotnet build .\FrontolFileAnalyzer.slnx -c Release --no-restore
 dotnet restore .\src\FrontolFileAnalyzer\FrontolFileAnalyzer.csproj -r win-x64 --configfile .\NuGet.SelfContained.Config
-dotnet publish .\src\FrontolFileAnalyzer\FrontolFileAnalyzer.csproj -c Release -r win-x64 --self-contained true --no-restore -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -p:EnableCompressionInSingleFile=true -o .\artifacts\FrontolFileAnalyzer-1.4.0-win-x64-self-contained
+dotnet publish .\src\FrontolFileAnalyzer\FrontolFileAnalyzer.csproj -c Release -r win-x64 --self-contained true --no-restore -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -p:EnableCompressionInSingleFile=true -o .\artifacts\FrontolFileAnalyzer-1.4.1-win-x64-self-contained
 ```
 
 Проверка на приложенном примере:

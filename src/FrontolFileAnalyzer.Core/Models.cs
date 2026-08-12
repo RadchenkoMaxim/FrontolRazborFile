@@ -205,7 +205,8 @@ public sealed class ParsedRecord : INotifyPropertyChanged
     public string CommandGroup => Kind switch
     {
         FrontolRecordKind.Header or FrontolRecordKind.Comment or FrontolRecordKind.Empty => $"{KindText}",
-        _ when !string.IsNullOrWhiteSpace(CommandName) => $"$$${CommandName}",
+        _ when !string.IsNullOrWhiteSpace(CommandName) && Definition is not null => $"$$${CommandName} — {Definition.DisplayName}",
+        _ when !string.IsNullOrWhiteSpace(CommandName) => $"$$${CommandName} — назначение не описано",
         _ => "Без команды"
     };
 
