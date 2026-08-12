@@ -156,10 +156,31 @@ public sealed class ParsedRecord
 
     public string CodeText => Kind == FrontolRecordKind.Data && Fields.Count > 0 ? Fields[0].RawValue : string.Empty;
 
+    public string BarcodeText => Kind == FrontolRecordKind.Data && Fields.Count > 1 ? Fields[1].RawValue : string.Empty;
+
+    public string PriceText => Kind == FrontolRecordKind.Data && Fields.Count > 4 ? Fields[4].RawValue : string.Empty;
+
+    public bool IsProductCommand =>
+        CommandName?.Contains("QUANTITY", StringComparison.OrdinalIgnoreCase) == true;
+
     public bool IsProductRecord =>
         Kind == FrontolRecordKind.Data &&
-        CommandName?.Contains("QUANTITY", StringComparison.OrdinalIgnoreCase) == true &&
+        IsProductCommand &&
         Fields.Count >= 55;
+
+    public string SectionGroup => Kind switch
+    {
+        FrontolRecordKind.Header or FrontolRecordKind.Comment or FrontolRecordKind.Empty => "0|Структура файла",
+        _ when IsProductCommand => "1|Товары",
+        _ => "2|Служебные команды"
+    };
+
+    public string CommandGroup => Kind switch
+    {
+        FrontolRecordKind.Header or FrontolRecordKind.Comment or FrontolRecordKind.Empty => $"{KindText}",
+        _ when !string.IsNullOrWhiteSpace(CommandName) => $"$$${CommandName}",
+        _ => "Без команды"
+    };
 
     public string? ProductTypeCode
     {
@@ -199,7 +220,8 @@ public sealed class ParsedRecord
         ? Definition?.Description ?? "Служебная строка файла обмена."
         : string.Join(Environment.NewLine, Issues.Select(issue => $"• {issue.Message}"));
 
-    public string SearchText => string.Join(' ', new[] { LineNumber.ToString(), KindText, CommandName, Title, Summary, RawText }
+    public string SearchText => string.Join(' ', new[]
+        { LineNumber.ToString(), KindText, CommandName, Title, Summary, RawText, CodeText, ContentText, ProductTypeText, BarcodeText, PriceText }
         .Where(value => !string.IsNullOrWhiteSpace(value)));
 }
 

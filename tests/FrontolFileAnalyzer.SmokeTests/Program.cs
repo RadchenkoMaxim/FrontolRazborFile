@@ -29,6 +29,14 @@ Assert(product.Fields[65].Interpretation == "Литр", "Поле 66 должн�
 Assert(product.IsProductRecord && product.ProductTypeCode == "18" && product.ProductTypeText == "Разливное пиво",
     "Товарная строка должна предоставлять код и название вида маркировки для фильтра.");
 Assert(!product.Fields[66].WasProvided && !product.Fields[67].WasProvided, "Поля 67 и 68 должны отмечаться как не переданные.");
+var editedLines = document.Records.Select(record => record.RawText).ToArray();
+var editedParts = editedLines[product.LineNumber - 1].Split(';', StringSplitOptions.None);
+editedParts[2] = "Изменённое тестовое наименование";
+editedLines[product.LineNumber - 1] = string.Join(';', editedParts);
+var editedDocument = new FrontolFileParser().ParseLines(args[0], editedLines, document.EncodingName);
+var editedProduct = editedDocument.Records.Single(record => record.LineNumber == product.LineNumber);
+Assert(editedProduct.ContentText == "Изменённое тестовое наименование" && editedProduct.Fields[2].RawValue == editedProduct.ContentText,
+    "Повторный разбор отредактированной физической строки должен обновлять значение и сводку товара.");
 var unprovidedField = product.Fields.First(field => field.Interpretation == "Не передано");
 Assert(!unprovidedField.HasExtendedInterpretation, "Значение «Не передано» не должно создавать большой блок расшифровки.");
 

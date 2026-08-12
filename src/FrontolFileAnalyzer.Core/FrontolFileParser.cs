@@ -22,12 +22,24 @@ public sealed class FrontolFileParser
         var bytes = File.ReadAllBytes(filePath);
         var (text, encodingName) = Decode(bytes);
         var lines = SplitLines(text);
-        var records = new List<ParsedRecord>(lines.Length);
+        return ParseLines(filePath, lines, encodingName, progress);
+    }
+
+    public AnalysisDocument ParseLines(
+        string filePath,
+        IReadOnlyList<string> lines,
+        string encodingName,
+        IProgress<FrontolParseProgress>? progress = null)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(filePath);
+        ArgumentNullException.ThrowIfNull(lines);
+
+        var records = new List<ParsedRecord>(lines.Count);
         string? currentCommand = null;
 
-        progress?.Report(new FrontolParseProgress(0, lines.Length, "Разбор строк"));
+        progress?.Report(new FrontolParseProgress(0, lines.Count, "Разбор строк"));
 
-        for (var index = 0; index < lines.Length; index++)
+        for (var index = 0; index < lines.Count; index++)
         {
             var rawLine = lines[index];
             var lineNumber = index + 1;
@@ -66,13 +78,13 @@ public sealed class FrontolFileParser
             currentCommand ??= "ADDQUANTITY";
             records.Add(DataRecord(lineNumber, rawLine, currentCommand));
 
-            if (index % 100 == 0 || index == lines.Length - 1)
+            if (index % 100 == 0 || index == lines.Count - 1)
             {
-                progress?.Report(new FrontolParseProgress(index + 1, lines.Length, "Разбор строк"));
+                progress?.Report(new FrontolParseProgress(index + 1, lines.Count, "Разбор строк"));
             }
         }
 
-        progress?.Report(new FrontolParseProgress(lines.Length, lines.Length, "Разбор завершен"));
+        progress?.Report(new FrontolParseProgress(lines.Count, lines.Count, "Разбор завершен"));
 
         return new AnalysisDocument
         {

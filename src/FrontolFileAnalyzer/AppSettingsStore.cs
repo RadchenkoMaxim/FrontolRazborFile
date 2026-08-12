@@ -7,6 +7,9 @@ internal sealed class AnalyzerSettings
 {
     public bool ShowEmptyFields { get; set; } = true;
     public Dictionary<string, List<int>> HiddenFieldsByCommand { get; set; } = [];
+    public Dictionary<string, double> RecordColumnWidths { get; set; } = [];
+    public List<string> HiddenRecordColumns { get; set; } = [];
+    public double RecordsPaneWidth { get; set; } = 655;
 }
 
 internal sealed class AppSettingsStore

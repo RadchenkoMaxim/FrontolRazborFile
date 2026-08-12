@@ -1,0 +1,21 @@
+<Window x:Class="FrontolFileAnalyzer.TextEditWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Изменить значение" Width="680" Height="310" MinWidth="520" MinHeight="240"
+        WindowStartupLocation="CenterOwner" ShowInTaskbar="False" ResizeMode="CanResizeWithGrip">
+    <Grid Margin="12">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+            <RowDefinition Height="Auto" />
+        </Grid.RowDefinitions>
+        <TextBlock x:Name="PromptText" Margin="0,0,0,7" FontWeight="SemiBold" TextWrapping="Wrap" />
+        <TextBox x:Name="ValueText" Grid.Row="1" AcceptsReturn="True" AcceptsTab="True"
+                 FontFamily="Consolas" TextWrapping="Wrap" VerticalScrollBarVisibility="Auto"
+                 HorizontalScrollBarVisibility="Disabled" />
+        <StackPanel Grid.Row="2" Margin="0,10,0,0" Orientation="Horizontal" HorizontalAlignment="Right">
+            <Button Width="96" Margin="0,0,7,0" IsDefault="True" Content="Применить" Click="Apply_Click" />
+            <Button Width="88" IsCancel="True" Content="Отмена" />
+        </StackPanel>
+    </Grid>
+</Window>
