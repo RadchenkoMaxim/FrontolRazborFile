@@ -25,6 +25,8 @@ public partial class MainWindow : Window, INotifyPropertyChanged
     private readonly ObservableCollection<MarkingFilterOption> _markingFilters = [];
     private readonly ObservableCollection<CommandFilterOption> _commandFilters = [];
     private readonly List<RecordColumnState> _recordColumns = [];
+    private readonly HashSet<string> _selectedMarkingCodes = new(StringComparer.OrdinalIgnoreCase);
+    private readonly HashSet<int> _modifiedLineNumbers = [];
     private List<string> _workingLines = [];
     private ObservableCollection<ParsedRecord> _records = [];
     private ICollectionView _recordsView = null!;
@@ -51,7 +53,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
     private bool _isDirty;
     private bool _adjustingRecordColumns;
     private Encoding _sourceEncoding = new UTF8Encoding(false);
-    private MarkingFilterOption? _selectedMarkingFilter;
+    private string _markingFilterLabel = "Все виды";
     private GridLength _recordsPaneWidth = new(655);
 
     public MainWindow()
@@ -64,6 +66,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         _recordsPaneWidth = new GridLength(Math.Max(360, _settings.RecordsPaneWidth));
         RecordsColumn.Width = _recordsPaneWidth;
         DataContext = this;
+        RebuildRecentFilesMenu();
     }
 
     public event PropertyChangedEventHandler? PropertyChanged;
@@ -100,17 +103,10 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         }
     }
 
-    public MarkingFilterOption? SelectedMarkingFilter
+    public string MarkingFilterLabel
     {
-        get => _selectedMarkingFilter;
-        set
-        {
-            if (SetField(ref _selectedMarkingFilter, value))
-            {
-                RecordsView.Refresh();
-                SelectFirstVisibleRecord();
-            }
-        }
+        get => _markingFilterLabel;
+        private set => SetField(ref _markingFilterLabel, value);
     }
 
     public string FilePath
@@ -298,6 +294,34 @@ public partial class MainWindow : Window, INotifyPropertyChanged
             return;
         }
 
+        var statisticsScreenshotIndex = Array.FindIndex(arguments, argument => argument.Equals("--screenshot-statistics", StringComparison.OrdinalIgnoreCase));
+        if (statisticsScreenshotIndex >= 0 && arguments.Length > statisticsScreenshotIndex + 2)
+        {
+            await LoadFileAsync(arguments[statisticsScreenshotIndex + 2]);
+            var window = new StatisticsWindow(_records, _modifiedLineNumbers.Count) { Owner = this };
+            window.Show();
+            await Dispatcher.InvokeAsync(window.UpdateLayout, System.Windows.Threading.DispatcherPriority.ApplicationIdle);
+            SaveWindowScreenshot(window, arguments[statisticsScreenshotIndex + 1]);
+            window.Close();
+            Close();
+            return;
+        }
+
+        var multiFilterScreenshotIndex = Array.FindIndex(arguments, argument => argument.Equals("--screenshot-marking-filter", StringComparison.OrdinalIgnoreCase));
+        if (multiFilterScreenshotIndex >= 0 && arguments.Length > multiFilterScreenshotIndex + 2)
+        {
+            await LoadFileAsync(arguments[multiFilterScreenshotIndex + 2]);
+            var options = _markingFilters.Where(option => option.Code is not null)
+                .Select(option => new MarkingMultiFilterOption(option.Code!, option.Name, option.Count));
+            var window = new MarkingMultiFilterWindow(options, _selectedMarkingCodes) { Owner = this };
+            window.Show();
+            await Dispatcher.InvokeAsync(window.UpdateLayout, System.Windows.Threading.DispatcherPriority.ApplicationIdle);
+            SaveWindowScreenshot(window, arguments[multiFilterScreenshotIndex + 1]);
+            window.Close();
+            Close();
+            return;
+        }
+
         var screenshotIndex = Array.FindIndex(arguments, argument => argument.Equals("--screenshot", StringComparison.OrdinalIgnoreCase));
         if (screenshotIndex >= 0 && arguments.Length > screenshotIndex + 2)
         {
@@ -309,9 +333,13 @@ public partial class MainWindow : Window, INotifyPropertyChanged
             if (markingFilterIndex >= 0 && arguments.Length > markingFilterIndex + 1)
             {
                 var requestedCode = arguments[markingFilterIndex + 1];
-                SelectedMarkingFilter = MarkingFilters.FirstOrDefault(option =>
-                    string.Equals(option.Code, requestedCode, StringComparison.OrdinalIgnoreCase))
-                    ?? SelectedMarkingFilter;
+                _selectedMarkingCodes.Clear();
+                if (MarkingFilters.Any(option => string.Equals(option.Code, requestedCode, StringComparison.OrdinalIgnoreCase)))
+                {
+                    _selectedMarkingCodes.Add(requestedCode);
+                }
+                UpdateMarkingFilterLabel();
+                RecordsView.Refresh();
             }
             var searchIndex = Array.FindIndex(arguments, argument =>
                 argument.Equals("--search", StringComparison.OrdinalIgnoreCase));
@@ -425,6 +453,13 @@ public partial class MainWindow : Window, INotifyPropertyChanged
             }
 
             FilePath = fullTargetPath;
+            AddRecentFile(fullTargetPath);
+            _modifiedLineNumbers.Clear();
+            foreach (var record in _records)
+            {
+                record.IsModified = false;
+            }
+            RecordsView.Refresh();
             SetDirty(false);
             StatusMessage = File.Exists(backupPath)
                 ? $"Файл сохранён. Резервная копия: {backupPath}"
@@ -608,6 +643,90 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         SaveInterfaceSettings();
     }
 
+    private void ConfigureMarkingFilter_Click(object sender, RoutedEventArgs e)
+    {
+        var options = _markingFilters
+            .Where(option => option.Code is not null)
+            .Select(option => new MarkingMultiFilterOption(option.Code!, option.Name, option.Count))
+            .ToArray();
+        var dialog = new MarkingMultiFilterWindow(options, _selectedMarkingCodes) { Owner = this };
+        if (dialog.ShowDialog() != true)
+        {
+            return;
+        }
+
+        _selectedMarkingCodes.Clear();
+        if (dialog.SelectedCodes.Count != options.Length)
+        {
+            foreach (var code in dialog.SelectedCodes)
+            {
+                _selectedMarkingCodes.Add(code);
+            }
+        }
+        UpdateMarkingFilterLabel();
+        RecordsView.Refresh();
+        SelectFirstVisibleRecord();
+    }
+
+    private void Statistics_Click(object sender, RoutedEventArgs e)
+    {
+        if (HasLoadedRecords)
+        {
+            new StatisticsWindow(_records, _modifiedLineNumbers.Count) { Owner = this }.ShowDialog();
+        }
+    }
+
+    private void GoToLine_Click(object sender, RoutedEventArgs e)
+    {
+        if (!HasLoadedRecords)
+        {
+            return;
+        }
+
+        var dialog = new GoToLineWindow(_records.Count, SelectedRecord?.LineNumber ?? 1) { Owner = this };
+        if (dialog.ShowDialog() != true)
+        {
+            return;
+        }
+        var lineNumber = dialog.LineNumber;
+
+        var record = _records.FirstOrDefault(item => item.LineNumber == lineNumber);
+        if (record is null)
+        {
+            StatusMessage = $"Строка {lineNumber:N0} отсутствует";
+            return;
+        }
+
+        SearchBox.Text = string.Empty;
+        SectionFilterBox.SelectedIndex = 0;
+        SeverityFilterBox.SelectedIndex = 0;
+        SelectedCommandFilter = _commandFilters.FirstOrDefault();
+        _selectedMarkingCodes.Clear();
+        UpdateMarkingFilterLabel();
+        RecordsView.Refresh();
+        SelectedRecord = record;
+        Dispatcher.BeginInvoke(() =>
+        {
+            ExpandGroupExpanders(RecordsList);
+            RecordsList.ScrollIntoView(record);
+            RecordsList.Focus();
+        }, System.Windows.Threading.DispatcherPriority.Background);
+        StatusMessage = $"Переход к физической строке {lineNumber:N0}";
+    }
+
+    private static void ExpandGroupExpanders(DependencyObject root)
+    {
+        for (var index = 0; index < VisualTreeHelper.GetChildrenCount(root); index++)
+        {
+            var child = VisualTreeHelper.GetChild(root, index);
+            if (child is Expander expander)
+            {
+                expander.IsExpanded = true;
+            }
+            ExpandGroupExpanders(child);
+        }
+    }
+
     private void MarkingCodes_Click(object sender, RoutedEventArgs e) =>
         new MarkingCodesWindow { Owner = this }.ShowDialog();
 
@@ -630,6 +749,12 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         if (e.Key == Key.M && Keyboard.Modifiers.HasFlag(ModifierKeys.Control))
         {
             ToggleRecordsPane_Click(sender, new RoutedEventArgs());
+            e.Handled = true;
+        }
+
+        if (e.Key == Key.G && Keyboard.Modifiers.HasFlag(ModifierKeys.Control))
+        {
+            GoToLine_Click(sender, new RoutedEventArgs());
             e.Handled = true;
         }
 
@@ -666,6 +791,10 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         {
             e.Cancel = true;
             SaveThenCloseAsync();
+        }
+        else
+        {
+            SetDirty(false);
         }
     }
 
@@ -709,6 +838,16 @@ public partial class MainWindow : Window, INotifyPropertyChanged
             new RecordColumnState("marking", "Вид маркировки", MarkingColumn, 160, 95),
             new RecordColumnState("status", "Статус", StatusColumn, 64, 58)
         ]);
+
+        if (!_settings.RecordColumnsInitialized)
+        {
+            if (!_settings.HiddenRecordColumns.Contains("command", StringComparer.OrdinalIgnoreCase))
+            {
+                _settings.HiddenRecordColumns.Add("command");
+            }
+            _settings.RecordColumnsInitialized = true;
+            _settingsStore.Save(_settings);
+        }
 
         foreach (var state in _recordColumns)
         {
@@ -803,7 +942,8 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         SectionFilterBox.SelectedIndex = 0;
         SeverityFilterBox.SelectedIndex = 0;
         SelectedCommandFilter = _commandFilters.FirstOrDefault();
-        SelectedMarkingFilter = _markingFilters.FirstOrDefault();
+        _selectedMarkingCodes.Clear();
+        UpdateMarkingFilterLabel();
         RecordsView.Refresh();
         SelectFirstVisibleRecord();
     }
@@ -840,8 +980,8 @@ public partial class MainWindow : Window, INotifyPropertyChanged
             return false;
         }
 
-        if (SelectedMarkingFilter?.Code is { } productTypeCode &&
-            !string.Equals(record.ProductTypeCode, productTypeCode, StringComparison.OrdinalIgnoreCase))
+        if (_selectedMarkingCodes.Count > 0 &&
+            (record.ProductTypeCode is null || !_selectedMarkingCodes.Contains(record.ProductTypeCode)))
         {
             return false;
         }
@@ -983,6 +1123,12 @@ public partial class MainWindow : Window, INotifyPropertyChanged
                 var snapshot = _workingLines.ToArray();
                 var document = await Task.Run(() => _parser.ParseLines(FilePath, snapshot, _encodingName));
                 ApplyParsedDocument(document, lineNumber, fieldNumber);
+                _modifiedLineNumbers.Add(lineNumber);
+                if (SelectedRecord is not null)
+                {
+                    SelectedRecord.IsModified = true;
+                    RecordsView.Refresh();
+                }
                 SetDirty(true);
                 StatusMessage = $"Строка {lineNumber:N0} изменена и повторно проверена";
             }
@@ -1049,6 +1195,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
             _newLine = DetectNewLine(sourceText);
             _hasTrailingNewLine = sourceText.EndsWith('\n') || sourceText.EndsWith('\r');
             _workingLines = document.Records.Select(record => record.RawText).ToList();
+            _modifiedLineNumbers.Clear();
 
             LoadProgressIsIndeterminate = true;
             LoadProgressText = "Подготовка списка строк";
@@ -1058,6 +1205,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
             RebuildCommandFilters(document.Records);
 
             FilePath = document.FilePath;
+            AddRecentFile(document.FilePath);
             EncodingLabel = $"Кодировка: {document.EncodingName}";
             RecordCountLabel = $"Строк: {document.Records.Count:N0} · данных: {document.DataRecordCount:N0}";
             ProblemCountLabel = $"Ошибок: {document.ErrorCount:N0} · предупреждений: {document.WarningCount:N0}";
@@ -1106,6 +1254,10 @@ public partial class MainWindow : Window, INotifyPropertyChanged
 
     private void ApplyParsedDocument(AnalysisDocument document, int selectedLine, int? selectedFieldNumber)
     {
+        foreach (var record in document.Records.Where(record => _modifiedLineNumbers.Contains(record.LineNumber)))
+        {
+            record.IsModified = true;
+        }
         _records = new ObservableCollection<ParsedRecord>(document.Records);
         ReplaceRecordsView(_records);
         RebuildMarkingFilters(document.Records);
@@ -1147,7 +1299,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
 
     private void RebuildMarkingFilters(IReadOnlyList<ParsedRecord> records)
     {
-        var previousCode = SelectedMarkingFilter?.Code;
+        var previousCodes = _selectedMarkingCodes.ToHashSet(StringComparer.OrdinalIgnoreCase);
         var productRecords = records.Where(record => record.IsProductRecord).ToArray();
         var options = productRecords
             .GroupBy(record => record.ProductTypeCode ?? string.Empty, StringComparer.OrdinalIgnoreCase)
@@ -1170,10 +1322,22 @@ public partial class MainWindow : Window, INotifyPropertyChanged
             _markingFilters.Add(option);
         }
 
-        SelectedMarkingFilter = previousCode is null
-            ? _markingFilters[0]
-            : _markingFilters.FirstOrDefault(option =>
-                string.Equals(option.Code, previousCode, StringComparison.OrdinalIgnoreCase)) ?? _markingFilters[0];
+        _selectedMarkingCodes.Clear();
+        foreach (var code in previousCodes.Where(code => options.Any(option => string.Equals(option.Code, code, StringComparison.OrdinalIgnoreCase))))
+        {
+            _selectedMarkingCodes.Add(code);
+        }
+        UpdateMarkingFilterLabel();
+    }
+
+    private void UpdateMarkingFilterLabel()
+    {
+        MarkingFilterLabel = _selectedMarkingCodes.Count switch
+        {
+            0 => "Все виды",
+            1 => _markingFilters.FirstOrDefault(option => _selectedMarkingCodes.Contains(option.Code ?? string.Empty))?.Name ?? "Выбран 1 вид",
+            _ => $"Выбрано видов: {_selectedMarkingCodes.Count}"
+        };
     }
 
     private void SelectFirstVisibleRecord()
@@ -1245,6 +1409,62 @@ public partial class MainWindow : Window, INotifyPropertyChanged
             _settings.RecordsPaneWidth = _recordsPaneWidth.Value;
         }
         _settingsStore.Save(_settings);
+    }
+
+    private void AddRecentFile(string path)
+    {
+        var fullPath = Path.GetFullPath(path);
+        _settings.RecentFiles.RemoveAll(item => string.Equals(item, fullPath, StringComparison.OrdinalIgnoreCase));
+        _settings.RecentFiles.Insert(0, fullPath);
+        _settings.RecentFiles = _settings.RecentFiles.Where(File.Exists).Take(10).ToList();
+        RebuildRecentFilesMenu();
+        _settingsStore.Save(_settings);
+    }
+
+    private void RebuildRecentFilesMenu()
+    {
+        if (RecentFilesMenu is null)
+        {
+            return;
+        }
+
+        RecentFilesMenu.Items.Clear();
+        var paths = _settings.RecentFiles.Where(File.Exists).Take(10).ToArray();
+        if (paths.Length == 0)
+        {
+            RecentFilesMenu.Items.Add(new MenuItem { Header = "Список пуст", IsEnabled = false });
+            return;
+        }
+
+        for (var index = 0; index < paths.Length; index++)
+        {
+            var path = paths[index];
+            var item = new MenuItem
+            {
+                Header = $"_{index + 1}  {Path.GetFileName(path)}",
+                ToolTip = path,
+                Tag = path
+            };
+            item.Click += RecentFile_Click;
+            RecentFilesMenu.Items.Add(item);
+        }
+        RecentFilesMenu.Items.Add(new Separator());
+        var clearItem = new MenuItem { Header = "Очистить список" };
+        clearItem.Click += (_, _) =>
+        {
+            _settings.RecentFiles.Clear();
+            RebuildRecentFilesMenu();
+            _settingsStore.Save(_settings);
+        };
+        RecentFilesMenu.Items.Add(clearItem);
+    }
+
+    private async void RecentFile_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is MenuItem { Tag: string path } && ConfirmDiscardChanges() && File.Exists(path))
+        {
+            await LoadFileAsync(path);
+        }
     }
 
     private bool ConfirmDiscardChanges()

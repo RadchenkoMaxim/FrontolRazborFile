@@ -28,7 +28,11 @@ Assert(product.Fields[51].Interpretation.Contains("Разрешена", StringCo
 Assert(product.Fields[65].Interpretation == "Литр", "Поле 66 должно расшифровываться как литр.");
 Assert(product.IsProductRecord && product.ProductTypeCode == "18" && product.ProductTypeText == "Разливное пиво",
     "Товарная строка должна предоставлять код и название вида маркировки для фильтра.");
+Assert(product.SectionGroup.EndsWith("Товары", StringComparison.Ordinal) && product.CommandGroup == "$$$REPLACEQUANTITY",
+    "Товар должен попадать в отдельный раздел и группу своей команды.");
 Assert(!product.Fields[66].WasProvided && !product.Fields[67].WasProvided, "Поля 67 и 68 должны отмечаться как не переданные.");
+Assert(product.Fields[66].IsValueEmpty && product.Fields[66].DisplayValue == "не передано",
+    "Пустое поле должно сохранять пустое RawValue, но отображаться понятным текстом.");
 var editedLines = document.Records.Select(record => record.RawText).ToArray();
 var editedParts = editedLines[product.LineNumber - 1].Split(';', StringSplitOptions.None);
 editedParts[2] = "Изменённое тестовое наименование";

@@ -58,8 +58,8 @@ public sealed class HighlightedTextBlock : TextBlock
 
             Inlines.Add(new Run(value.Substring(match, query.Length))
             {
-                Background = Brushes.Gold,
-                Foreground = Brushes.Black,
+                Background = TryFindResource("PrimarySoftBrush") as Brush ?? Brushes.LightBlue,
+                Foreground = TryFindResource("PrimaryBrush") as Brush ?? Brushes.DarkBlue,
                 FontWeight = FontWeights.SemiBold
             });
             start = match + query.Length;

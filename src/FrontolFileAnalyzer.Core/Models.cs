@@ -1,3 +1,5 @@
+using System.ComponentModel;
+
 namespace FrontolFileAnalyzer.Core;
 
 public enum IssueSeverity
@@ -111,10 +113,16 @@ public sealed class AnalyzedField
     public string DetailInterpretation => HasExtendedInterpretation
         ? Interpretation.Replace(" · ", Environment.NewLine, StringComparison.Ordinal)
         : string.Empty;
+
+    public bool IsValueEmpty => string.IsNullOrEmpty(RawValue);
+    public string DisplayValue => IsValueEmpty ? "не передано" : RawValue;
 }
 
-public sealed class ParsedRecord
+public sealed class ParsedRecord : INotifyPropertyChanged
 {
+    private bool _isModified;
+
+    public event PropertyChangedEventHandler? PropertyChanged;
     public required int LineNumber { get; init; }
     public required FrontolRecordKind Kind { get; init; }
     public required string RawText { get; init; }
@@ -124,6 +132,19 @@ public sealed class ParsedRecord
     public CommandDefinition? Definition { get; init; }
     public IReadOnlyList<AnalyzedField> Fields { get; init; } = [];
     public IReadOnlyList<AnalysisIssue> Issues { get; init; } = [];
+    public bool IsModified
+    {
+        get => _isModified;
+        set
+        {
+            if (_isModified == value)
+            {
+                return;
+            }
+            _isModified = value;
+            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(IsModified)));
+        }
+    }
 
     public IssueSeverity Severity
     {
@@ -159,6 +180,12 @@ public sealed class ParsedRecord
     public string BarcodeText => Kind == FrontolRecordKind.Data && Fields.Count > 1 ? Fields[1].RawValue : string.Empty;
 
     public string PriceText => Kind == FrontolRecordKind.Data && Fields.Count > 4 ? Fields[4].RawValue : string.Empty;
+    public string ProductNameText => Kind == FrontolRecordKind.Data && Fields.Count > 2 ? Fields[2].RawValue : string.Empty;
+
+    public string CodeDisplayText => IsProductRecord ? EmptyAsNotProvided(CodeText) : CodeText;
+    public string BarcodeDisplayText => IsProductRecord ? EmptyAsNotProvided(BarcodeText) : BarcodeText;
+    public string PriceDisplayText => IsProductRecord ? EmptyAsNotProvided(PriceText) : PriceText;
+    public string ProductNameDisplayText => IsProductRecord ? EmptyAsNotProvided(ProductNameText) : ProductNameText;
 
     public bool IsProductCommand =>
         CommandName?.Contains("QUANTITY", StringComparison.OrdinalIgnoreCase) == true;
@@ -200,16 +227,17 @@ public sealed class ParsedRecord
         ? FrontolReferenceCatalog.ProductTypeValues.TryGetValue(code, out var name) ? name : $"Код {code}"
         : string.Empty;
 
+    public string ProductTypeDisplayText => IsProductRecord ? EmptyAsNotProvided(ProductTypeText) : ProductTypeText;
+
     public string ContentText
     {
         get
         {
             if (Kind == FrontolRecordKind.Data &&
-                CommandName?.Contains("QUANTITY", StringComparison.OrdinalIgnoreCase) == true &&
-                Fields.Count >= 3 &&
-                !string.IsNullOrEmpty(Fields[2].RawValue))
+                IsProductCommand &&
+                Fields.Count >= 3)
             {
-                return Fields[2].RawValue;
+                return EmptyAsNotProvided(Fields[2].RawValue);
             }
 
             return Kind == FrontolRecordKind.Data ? Summary : Title;
@@ -223,6 +251,8 @@ public sealed class ParsedRecord
     public string SearchText => string.Join(' ', new[]
         { LineNumber.ToString(), KindText, CommandName, Title, Summary, RawText, CodeText, ContentText, ProductTypeText, BarcodeText, PriceText }
         .Where(value => !string.IsNullOrWhiteSpace(value)));
+
+    private static string EmptyAsNotProvided(string value) => string.IsNullOrEmpty(value) ? "не передано" : value;
 }
 
 public sealed class AnalysisDocument

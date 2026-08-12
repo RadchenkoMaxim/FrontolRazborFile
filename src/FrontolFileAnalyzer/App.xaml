@@ -6,6 +6,33 @@
     <Application.Resources>
         <BooleanToVisibilityConverter x:Key="BooleanToVisibilityConverter" />
         <local:GroupNameConverter x:Key="GroupNameConverter" />
+        <SolidColorBrush x:Key="PrimaryBrush" Color="#2F6F9F" />
+        <SolidColorBrush x:Key="PrimarySoftBrush" Color="#EAF2F8" />
+        <SolidColorBrush x:Key="MarkingBrush" Color="#3D7954" />
+        <SolidColorBrush x:Key="MarkingSoftBrush" Color="#EBF5EE" />
+        <SolidColorBrush x:Key="ChangedBrush" Color="#A66A00" />
+        <SolidColorBrush x:Key="ChangedSoftBrush" Color="#FFF4D6" />
+        <SolidColorBrush x:Key="ErrorBrush" Color="#B54848" />
+        <SolidColorBrush x:Key="ErrorSoftBrush" Color="#FBECEC" />
+        <SolidColorBrush x:Key="SurfaceBrush" Color="#FFFFFF" />
+        <SolidColorBrush x:Key="SurfaceAltBrush" Color="#F6F8FA" />
+        <SolidColorBrush x:Key="DividerBrush" Color="#D8DEE4" />
+        <SolidColorBrush x:Key="MutedTextBrush" Color="#7A838B" />
+
+        <Geometry x:Key="IconOpen">M2,4 L7,4 9,6 14,6 14,13 2,13 Z M3,7 L13,7 11.5,12 1.5,12 Z</Geometry>
+        <Geometry x:Key="IconSave">M2,2 L12,2 14,4 14,14 2,14 Z M4,3 L11,3 11,7 4,7 Z M4,9 L12,9 12,13 4,13 Z</Geometry>
+        <Geometry x:Key="IconExport">M7,1 L10,4 8,4 8,10 6,10 6,4 4,4 Z M2,11 L4,11 4,13 12,13 12,11 14,11 14,15 2,15 Z</Geometry>
+        <Geometry x:Key="IconCompare">M2,4 L11,4 9,2 10.5,1 15,5 10.5,9 9,8 11,6 2,6 Z M14,10 L5,10 7,8 5.5,7 1,11 5.5,15 7,14 5,12 14,12 Z</Geometry>
+        <Geometry x:Key="IconHelp">M8,1 A7,7 0 1 1 7.99,1 M6.2,5.5 C6.3,3.8 9.8,3.4 10.1,5.4 10.3,6.7 8,7.2 8,9 M8,11.5 L8,13</Geometry>
+        <Geometry x:Key="IconColumns">M1,2 L15,2 15,14 1,14 Z M6,2 L6,14 M11,2 L11,14</Geometry>
+        <Geometry x:Key="IconStats">M2,14 L2,8 5,8 5,14 Z M7,14 L7,3 10,3 10,14 Z M12,14 L12,6 15,6 15,14 Z</Geometry>
+        <Geometry x:Key="IconGoto">M2,3 L8,3 8,5 4,5 4,12 11,12 11,8 13,8 13,14 2,14 Z M8,1 L15,1 15,8 13,8 13,4.4 7.7,9.7 6.3,8.3 11.6,3 8,3 Z</Geometry>
+        <Style x:Key="ToolbarIcon" TargetType="Path">
+            <Setter Property="Width" Value="16" /><Setter Property="Height" Value="16" />
+            <Setter Property="Stretch" Value="Uniform" /><Setter Property="StrokeThickness" Value="1.15" />
+            <Setter Property="Stroke" Value="{DynamicResource PrimaryBrush}" /><Setter Property="Fill" Value="Transparent" />
+            <Setter Property="Margin" Value="0,0,6,0" />
+        </Style>
         <Style TargetType="Window">
             <Setter Property="FontFamily" Value="Segoe UI" />
             <Setter Property="FontSize" Value="12" />
@@ -19,6 +46,9 @@
             <Setter Property="MinHeight" Value="27" />
             <Setter Property="Padding" Value="12,3" />
             <Setter Property="VerticalContentAlignment" Value="Center" />
+            <Setter Property="Background" Value="#F8FAFB" />
+            <Setter Property="BorderBrush" Value="{DynamicResource DividerBrush}" />
+            <Setter Property="BorderThickness" Value="1" />
         </Style>
 
         <Style TargetType="TextBox">
@@ -31,6 +61,12 @@
             <Setter Property="MinHeight" Value="26" />
             <Setter Property="Padding" Value="4,2" />
             <Setter Property="VerticalContentAlignment" Value="Center" />
+        </Style>
+
+        <Style TargetType="GroupBox">
+            <Setter Property="BorderBrush" Value="{DynamicResource DividerBrush}" />
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="Background" Value="{DynamicResource SurfaceBrush}" />
         </Style>
     </Application.Resources>
 </Application>

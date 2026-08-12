@@ -9,7 +9,9 @@ internal sealed class AnalyzerSettings
     public Dictionary<string, List<int>> HiddenFieldsByCommand { get; set; } = [];
     public Dictionary<string, double> RecordColumnWidths { get; set; } = [];
     public List<string> HiddenRecordColumns { get; set; } = [];
+    public bool RecordColumnsInitialized { get; set; }
     public double RecordsPaneWidth { get; set; } = 655;
+    public List<string> RecentFiles { get; set; } = [];
 }
 
 internal sealed class AppSettingsStore

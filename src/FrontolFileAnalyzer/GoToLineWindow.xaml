@@ -1,0 +1,15 @@
+<Window x:Class="FrontolFileAnalyzer.GoToLineWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Перейти к строке" Width="390" Height="175" ResizeMode="NoResize"
+        WindowStartupLocation="CenterOwner" ShowInTaskbar="False">
+    <Grid Margin="16">
+        <Grid.RowDefinitions><RowDefinition Height="Auto" /><RowDefinition Height="Auto" /><RowDefinition Height="*" /></Grid.RowDefinitions>
+        <TextBlock x:Name="PromptText" Foreground="{StaticResource MutedTextBrush}" />
+        <TextBox x:Name="LineNumberBox" Grid.Row="1" Margin="0,8,0,0" FontSize="15" PreviewTextInput="LineNumberBox_PreviewTextInput" />
+        <StackPanel Grid.Row="2" Margin="0,12,0,0" Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Bottom">
+            <Button Width="90" Margin="0,0,7,0" IsDefault="True" Content="Перейти" Click="Go_Click" />
+            <Button Width="82" IsCancel="True" Content="Отмена" />
+        </StackPanel>
+    </Grid>
+</Window>

@@ -33,6 +33,7 @@
                 <Separator />
                 <MenuItem Header="_Экспорт видимых строк..." Click="Export_Click" IsEnabled="{Binding HasLoadedRecords}" />
                 <MenuItem Header="С_равнить с файлом..." Click="Compare_Click" IsEnabled="{Binding HasLoadedRecords}" />
+                <MenuItem Header="_Последние файлы" x:Name="RecentFilesMenu" />
                 <Separator />
                 <MenuItem Header="Открыть _исходный файл" Click="OpenSourceFile_Click" IsEnabled="{Binding CanOpenCurrentFile}" />
                 <MenuItem Header="Показать в _папке" Click="ShowInFolder_Click" IsEnabled="{Binding CanOpenCurrentFile}" />
@@ -45,6 +46,9 @@
                 <MenuItem Header="Показывать пустые поля" IsCheckable="True" IsChecked="{Binding ShowEmptyFields, Mode=TwoWay}" />
                 <MenuItem Header="Настроить видимость полей..." Click="ConfigureFields_Click" IsEnabled="{Binding CanConfigureFields}" />
                 <MenuItem Header="Колонки списка строк..." Click="ConfigureRecordColumns_Click" />
+                <Separator />
+                <MenuItem Header="Перейти к физической строке..." InputGestureText="Ctrl+G" Click="GoToLine_Click" IsEnabled="{Binding HasLoadedRecords}" />
+                <MenuItem Header="Сводная статистика файла..." Click="Statistics_Click" IsEnabled="{Binding HasLoadedRecords}" />
             </MenuItem>
             <MenuItem Header="_Справка">
                 <MenuItem Header="Команды и поля загрузки" Click="CommandReference_Click" />
@@ -57,22 +61,24 @@
         <ToolBarTray Grid.Row="1" IsLocked="True" Background="#F3F3F3">
             <ToolBar Band="0" BandIndex="0" Padding="4,2" ToolBarTray.IsLocked="True">
                 <Button Click="OpenFile_Click" IsEnabled="{Binding CanStartLoad}" ToolTip="Открыть файл (Ctrl+O)">
-                    <StackPanel Orientation="Horizontal"><TextBlock Margin="0,0,6,0" FontFamily="Segoe MDL2 Assets" FontSize="14" Text="&#xE838;" /><TextBlock Text="Открыть" /></StackPanel>
+                    <StackPanel Orientation="Horizontal"><Path Style="{StaticResource ToolbarIcon}" Data="{StaticResource IconOpen}" /><TextBlock Text="Открыть" /></StackPanel>
                 </Button>
                 <Button Click="SaveFile_Click" IsEnabled="{Binding CanSaveFile}" ToolTip="Сохранить изменения (Ctrl+S)">
-                    <StackPanel Orientation="Horizontal"><TextBlock Margin="0,0,6,0" FontFamily="Segoe MDL2 Assets" FontSize="14" Text="&#xE74E;" /><TextBlock Text="Сохранить" /></StackPanel>
+                    <StackPanel Orientation="Horizontal"><Path Style="{StaticResource ToolbarIcon}" Data="{StaticResource IconSave}" /><TextBlock Text="Сохранить" /></StackPanel>
                 </Button>
                 <Button Click="Export_Click" IsEnabled="{Binding HasLoadedRecords}" ToolTip="Экспортировать строки, оставшиеся после фильтра">
-                    <StackPanel Orientation="Horizontal"><TextBlock Margin="0,0,6,0" FontFamily="Segoe MDL2 Assets" FontSize="14" Text="&#xEDE1;" /><TextBlock Text="Экспорт" /></StackPanel>
+                    <StackPanel Orientation="Horizontal"><Path Style="{StaticResource ToolbarIcon}" Data="{StaticResource IconExport}" /><TextBlock Text="Экспорт" /></StackPanel>
                 </Button>
                 <Button Click="Compare_Click" IsEnabled="{Binding HasLoadedRecords}" ToolTip="Сравнить товары с другим файлом">
-                    <StackPanel Orientation="Horizontal"><TextBlock Margin="0,0,6,0" FontFamily="Segoe MDL2 Assets" FontSize="14" Text="&#xE8EF;" /><TextBlock Text="Сравнить" /></StackPanel>
+                    <StackPanel Orientation="Horizontal"><Path Style="{StaticResource ToolbarIcon}" Data="{StaticResource IconCompare}" /><TextBlock Text="Сравнить" /></StackPanel>
                 </Button>
                 <Separator />
                 <Button Click="CommandReference_Click" ToolTip="Справочник команд и полей">
-                    <StackPanel Orientation="Horizontal"><TextBlock Margin="0,0,6,0" FontFamily="Segoe MDL2 Assets" FontSize="14" Text="&#xE897;" /><TextBlock Text="Справка" /></StackPanel>
+                    <StackPanel Orientation="Horizontal"><Path Style="{StaticResource ToolbarIcon}" Data="{StaticResource IconHelp}" /><TextBlock Text="Справка" /></StackPanel>
                 </Button>
-                <Button Click="ConfigureRecordColumns_Click" Content="Колонки" ToolTip="Показать или скрыть колонки списка" />
+                <Button Click="ConfigureRecordColumns_Click" ToolTip="Показать или скрыть колонки списка"><StackPanel Orientation="Horizontal"><Path Style="{StaticResource ToolbarIcon}" Data="{StaticResource IconColumns}" /><TextBlock Text="Колонки" /></StackPanel></Button>
+                <Button Click="GoToLine_Click" IsEnabled="{Binding HasLoadedRecords}" ToolTip="Перейти к физической строке (Ctrl+G)"><StackPanel Orientation="Horizontal"><Path Style="{StaticResource ToolbarIcon}" Data="{StaticResource IconGoto}" /><TextBlock Text="К строке" /></StackPanel></Button>
+                <Button Click="Statistics_Click" IsEnabled="{Binding HasLoadedRecords}" ToolTip="Сводная статистика файла"><StackPanel Orientation="Horizontal"><Path Style="{StaticResource ToolbarIcon}" Data="{StaticResource IconStats}" /><TextBlock Text="Сводка" /></StackPanel></Button>
                 <Button Click="OpenSourceFile_Click" IsEnabled="{Binding CanOpenCurrentFile}" Content="Открыть исходный" />
                 <Button Click="ShowInFolder_Click" IsEnabled="{Binding CanOpenCurrentFile}" Content="В папке" />
                 <Separator />
@@ -117,11 +123,9 @@
                         <ComboBoxItem Content="Без замечаний" />
                     </ComboBox>
                     <TextBlock Margin="10,0,4,0" VerticalAlignment="Center" Text="Маркировка:" />
-                    <ComboBox Width="245"
-                              ItemsSource="{Binding MarkingFilters}"
-                              SelectedItem="{Binding SelectedMarkingFilter, Mode=TwoWay}"
-                              DisplayMemberPath="DisplayText"
-                              ToolTip="Отбор товарных строк по полю 55" />
+                    <Button MinWidth="190" MaxWidth="270" Padding="8,2" HorizontalContentAlignment="Left"
+                            Content="{Binding MarkingFilterLabel}" Click="ConfigureMarkingFilter_Click"
+                            ToolTip="Выбрать один или несколько видов маркировки" />
                     <Button Margin="8,0,0,0" Padding="8,2" Content="Сбросить" Click="ResetFilters_Click" />
                 </WrapPanel>
             </Grid>
@@ -147,7 +151,7 @@
                 <ColumnDefinition Width="*" />
             </Grid.ColumnDefinitions>
 
-            <GroupBox x:Name="RecordsPanel" Grid.Column="0" Header="Строки файла" Padding="4">
+            <GroupBox x:Name="RecordsPanel" Grid.Column="0" Header="Строки файла" Padding="4" Background="White">
                 <ListView x:Name="RecordsList" ItemsSource="{Binding RecordsView}"
                           SelectedItem="{Binding SelectedRecord}"
                           BorderThickness="0"
@@ -169,22 +173,28 @@
                     </ListView.Resources>
                     <ListView.ItemContainerStyle>
                         <Style TargetType="ListViewItem">
+                            <Setter Property="Background" Value="Transparent" />
+                            <Setter Property="Foreground" Value="#26323A" />
                             <Setter Property="HorizontalContentAlignment" Value="Stretch" />
                             <Setter Property="Padding" Value="2" />
                             <Setter Property="ContextMenu" Value="{StaticResource RecordContextMenu}" />
                             <EventSetter Event="PreviewMouseRightButtonDown" Handler="RecordItem_RightClick" />
                             <Style.Triggers>
                                 <Trigger Property="ItemsControl.AlternationIndex" Value="1">
-                                    <Setter Property="Background" Value="#F5F7F9" />
+                                    <Setter Property="Background" Value="{StaticResource SurfaceAltBrush}" />
                                 </Trigger>
                                 <DataTrigger Binding="{Binding Severity}" Value="{x:Static core:IssueSeverity.Info}">
-                                    <Setter Property="Foreground" Value="#1A5C9A" />
+                                    <Setter Property="Foreground" Value="{StaticResource PrimaryBrush}" />
                                 </DataTrigger>
                                 <DataTrigger Binding="{Binding Severity}" Value="{x:Static core:IssueSeverity.Warning}">
-                                    <Setter Property="Foreground" Value="#8A5800" />
+                                    <Setter Property="Foreground" Value="{StaticResource ChangedBrush}" />
                                 </DataTrigger>
                                 <DataTrigger Binding="{Binding Severity}" Value="{x:Static core:IssueSeverity.Error}">
-                                    <Setter Property="Foreground" Value="#B00020" />
+                                    <Setter Property="Foreground" Value="{StaticResource ErrorBrush}" />
+                                </DataTrigger>
+                                <DataTrigger Binding="{Binding IsModified}" Value="True">
+                                    <Setter Property="Background" Value="{StaticResource ChangedSoftBrush}" />
+                                    <Setter Property="ToolTip" Value="Строка изменена и ещё не сохранена" />
                                 </DataTrigger>
                             </Style.Triggers>
                         </Style>
@@ -198,10 +208,10 @@
                                             <ControlTemplate TargetType="GroupItem">
                                                 <Expander IsExpanded="True" Margin="0,2,0,2">
                                                     <Expander.Header>
-                                                        <Border Padding="7,5" Background="#DDEBF6" BorderBrush="#B6CCDE" BorderThickness="0,0,0,1">
+                                                        <Border Padding="7,5" Background="{StaticResource PrimarySoftBrush}">
                                                             <StackPanel Orientation="Horizontal">
                                                                 <TextBlock FontWeight="Bold" Text="{Binding Name, Converter={StaticResource GroupNameConverter}}" />
-                                                                <TextBlock Margin="7,0,0,0" Foreground="#52697A" Text="{Binding ItemCount, StringFormat=({0:N0})}" />
+                                                                <TextBlock Margin="7,0,0,0" Foreground="{StaticResource MutedTextBrush}" Text="{Binding ItemCount, StringFormat=({0:N0})}" />
                                                             </StackPanel>
                                                         </Border>
                                                     </Expander.Header>
@@ -221,9 +231,9 @@
                                             <ControlTemplate TargetType="GroupItem">
                                                 <Expander IsExpanded="True" Margin="8,1,0,1">
                                                     <Expander.Header>
-                                                        <DockPanel Background="#ECEFF2" LastChildFill="False">
+                                                        <DockPanel Background="{StaticResource SurfaceAltBrush}" LastChildFill="False">
                                                             <TextBlock Margin="6,3" FontFamily="Consolas" FontWeight="SemiBold" Text="{Binding Name}" />
-                                                            <TextBlock Margin="0,3,6,3" Foreground="#66717A" Text="{Binding ItemCount, StringFormat=· {0:N0}}" />
+                                                            <TextBlock Margin="0,3,6,3" Foreground="{StaticResource MutedTextBrush}" Text="{Binding ItemCount, StringFormat=· {0:N0}}" />
                                                         </DockPanel>
                                                     </Expander.Header>
                                                     <ItemsPresenter />
@@ -244,23 +254,26 @@
                             <GridViewColumn x:Name="CodeColumn" Header="Код" Width="88">
                                 <GridViewColumn.CellTemplate>
                                     <DataTemplate>
-                                        <local:HighlightedTextBlock FontFamily="Consolas" FontWeight="Bold" Foreground="#123F66"
-                                                   HighlightText="{Binding CodeText}" SearchText="{Binding DataContext.SearchTextQuery, RelativeSource={RelativeSource AncestorType=Window}}" TextTrimming="CharacterEllipsis" />
+                                        <local:HighlightedTextBlock FontFamily="Consolas" FontWeight="Bold" Foreground="{StaticResource PrimaryBrush}"
+                                                   HighlightText="{Binding CodeDisplayText}" SearchText="{Binding DataContext.SearchTextQuery, RelativeSource={RelativeSource AncestorType=Window}}" TextTrimming="CharacterEllipsis"
+                                                   ToolTip="{Binding CodeDisplayText}" ToolTipService.InitialShowDelay="350" />
                                     </DataTemplate>
                                 </GridViewColumn.CellTemplate>
                             </GridViewColumn>
                             <GridViewColumn x:Name="NameColumn" Header="Наименование" Width="190">
                                 <GridViewColumn.CellTemplate>
                                     <DataTemplate>
-                                        <local:HighlightedTextBlock FontWeight="SemiBold" HighlightText="{Binding ContentText}" SearchText="{Binding DataContext.SearchTextQuery, RelativeSource={RelativeSource AncestorType=Window}}" TextTrimming="CharacterEllipsis" />
+                                        <local:HighlightedTextBlock FontWeight="SemiBold" HighlightText="{Binding ContentText}" SearchText="{Binding DataContext.SearchTextQuery, RelativeSource={RelativeSource AncestorType=Window}}" TextTrimming="CharacterEllipsis"
+                                                   ToolTip="{Binding ContentText}" ToolTipService.InitialShowDelay="350" />
                                     </DataTemplate>
                                 </GridViewColumn.CellTemplate>
                             </GridViewColumn>
                             <GridViewColumn x:Name="MarkingColumn" Header="Вид маркировки" Width="160">
                                 <GridViewColumn.CellTemplate>
                                     <DataTemplate>
-                                        <local:HighlightedTextBlock FontWeight="SemiBold" Foreground="#24613B"
-                                                   HighlightText="{Binding ProductTypeText}" SearchText="{Binding DataContext.SearchTextQuery, RelativeSource={RelativeSource AncestorType=Window}}" TextTrimming="CharacterEllipsis" />
+                                        <local:HighlightedTextBlock FontWeight="SemiBold" Foreground="{StaticResource MarkingBrush}"
+                                                   HighlightText="{Binding ProductTypeDisplayText}" SearchText="{Binding DataContext.SearchTextQuery, RelativeSource={RelativeSource AncestorType=Window}}" TextTrimming="CharacterEllipsis"
+                                                   ToolTip="{Binding ProductTypeDisplayText}" ToolTipService.InitialShowDelay="350" />
                                     </DataTemplate>
                                 </GridViewColumn.CellTemplate>
                             </GridViewColumn>
@@ -270,8 +283,7 @@
                 </ListView>
             </GroupBox>
 
-            <Border Grid.Column="1" Margin="3,0" Background="#E1E1E1" IsHitTestVisible="False" />
-            <GridSplitter Grid.Column="1" Width="5" HorizontalAlignment="Center" Background="#C5C5C5" />
+            <GridSplitter Grid.Column="1" Width="3" HorizontalAlignment="Center" Background="{StaticResource DividerBrush}" />
             <Button x:Name="ToggleRecordsPaneButton" Grid.Column="1" Panel.ZIndex="1"
                     Width="25" Height="52" Padding="0" MinHeight="0"
                     HorizontalAlignment="Center" VerticalAlignment="Center"
@@ -289,7 +301,7 @@
                     <RowDefinition Height="Auto" />
                 </Grid.RowDefinitions>
 
-                <Border Grid.Row="0" Padding="8,6" Background="White" BorderBrush="#CFCFCF" BorderThickness="1,1,1,0">
+                <Border Grid.Row="0" Padding="10,8" Background="White" BorderBrush="{StaticResource DividerBrush}" BorderThickness="0,0,0,1">
                     <Grid>
                         <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="*" />
@@ -308,55 +320,59 @@
                                     <ColumnDefinition Width="Auto" />
                                     <ColumnDefinition Width="220" />
                                 </Grid.ColumnDefinitions>
-                                <Border Padding="7,4" Background="#E7F1FA" BorderBrush="#A9C8E2" BorderThickness="1" CornerRadius="2">
+                                <Border Padding="7,4" Background="{StaticResource PrimarySoftBrush}" CornerRadius="3">
                                     <StackPanel Orientation="Horizontal">
-                                        <TextBlock Margin="0,0,5,0" Foreground="#315A7D" Text="Код:" />
-                                        <TextBlock FontFamily="Consolas" FontWeight="Bold" Foreground="#123F66" Text="{Binding CodeText}" />
+                                        <TextBlock Margin="0,0,5,0" Foreground="{StaticResource PrimaryBrush}" Text="Код:" />
+                                        <TextBlock FontFamily="Consolas" FontWeight="Bold" Foreground="{StaticResource PrimaryBrush}" Text="{Binding CodeDisplayText}" ToolTip="{Binding CodeDisplayText}" />
                                     </StackPanel>
                                 </Border>
-                                <Border Grid.Column="1" Margin="6,0" Padding="7,4" Background="#F5F5F5" BorderBrush="#D2D2D2" BorderThickness="1" CornerRadius="2">
+                                <Border Grid.Column="1" Margin="6,0" Padding="7,4" Background="{StaticResource SurfaceAltBrush}" CornerRadius="3">
                                     <Grid>
                                         <Grid.ColumnDefinitions>
                                             <ColumnDefinition Width="Auto" />
                                             <ColumnDefinition Width="*" />
                                         </Grid.ColumnDefinitions>
                                         <TextBlock Margin="0,0,5,0" Foreground="#5B5B5B" Text="Наименование:" />
-                                        <TextBlock Grid.Column="1" FontWeight="SemiBold" Text="{Binding ContentText}" TextTrimming="CharacterEllipsis" />
+                                        <TextBlock Grid.Column="1" FontWeight="SemiBold" Text="{Binding ProductNameDisplayText}" TextTrimming="CharacterEllipsis" ToolTip="{Binding ProductNameDisplayText}" />
                                     </Grid>
                                 </Border>
-                                <Border Grid.Column="2" Padding="7,4" Background="#FFF6E4" BorderBrush="#E2C88D" BorderThickness="1" CornerRadius="2">
+                                <Border Grid.Column="2" Padding="7,4" Background="{StaticResource PrimarySoftBrush}" CornerRadius="3">
                                     <StackPanel Orientation="Horizontal">
-                                        <TextBlock Margin="0,0,5,0" Foreground="#755C25" Text="Цена:" />
-                                        <TextBlock FontFamily="Consolas" FontWeight="Bold" Text="{Binding PriceText}" />
+                                        <TextBlock Margin="0,0,5,0" Foreground="{StaticResource PrimaryBrush}" Text="Цена:" />
+                                        <TextBlock FontFamily="Consolas" FontWeight="Bold" Text="{Binding PriceDisplayText}" ToolTip="{Binding PriceDisplayText}" />
                                     </StackPanel>
                                 </Border>
-                                <Border Grid.Column="3" Margin="6,0" Padding="7,4" Background="#F4F4F4" BorderBrush="#D2D2D2" BorderThickness="1" CornerRadius="2">
+                                <Border Grid.Column="3" Margin="6,0" Padding="7,4" Background="{StaticResource SurfaceAltBrush}" CornerRadius="3">
                                     <StackPanel Orientation="Horizontal">
                                         <TextBlock Margin="0,0,5,0" Foreground="#5B5B5B" Text="Штрихкод:" />
-                                        <TextBlock FontFamily="Consolas" FontWeight="SemiBold" Text="{Binding BarcodeText}" TextTrimming="CharacterEllipsis" />
+                                        <TextBlock FontFamily="Consolas" FontWeight="SemiBold" Text="{Binding BarcodeDisplayText}" TextTrimming="CharacterEllipsis" ToolTip="{Binding BarcodeDisplayText}" />
                                     </StackPanel>
                                 </Border>
-                                <Border Grid.Column="4" Padding="7,4" Background="#E7F4EA" BorderBrush="#A9CFB4" BorderThickness="1" CornerRadius="2">
+                                <Border Grid.Column="4" Padding="7,4" Background="{StaticResource MarkingSoftBrush}" CornerRadius="3">
                                     <Grid>
                                         <Grid.ColumnDefinitions>
                                             <ColumnDefinition Width="Auto" />
                                             <ColumnDefinition Width="*" />
                                         </Grid.ColumnDefinitions>
-                                        <TextBlock Margin="0,0,5,0" Foreground="#477153" Text="Маркировка:" />
-                                        <TextBlock Grid.Column="1" FontWeight="Bold" Foreground="#24613B"
-                                                   Text="{Binding ProductTypeText}" TextTrimming="CharacterEllipsis" />
+                                        <TextBlock Margin="0,0,5,0" Foreground="{StaticResource MarkingBrush}" Text="Маркировка:" />
+                                        <TextBlock Grid.Column="1" FontWeight="Bold" Foreground="{StaticResource MarkingBrush}"
+                                                   Text="{Binding ProductTypeDisplayText}" TextTrimming="CharacterEllipsis" ToolTip="{Binding ProductTypeDisplayText}" />
                                     </Grid>
                                 </Border>
                             </Grid>
                         </StackPanel>
                         <StackPanel Grid.Column="1" Margin="12,0,0,0" HorizontalAlignment="Right">
                             <TextBlock HorizontalAlignment="Right" FontWeight="SemiBold" Text="{Binding StatusText}" />
+                            <Border Margin="0,3,0,0" Padding="6,2" Background="{StaticResource ChangedSoftBrush}" CornerRadius="3"
+                                    Visibility="{Binding IsModified, Converter={StaticResource BooleanToVisibilityConverter}}">
+                                <TextBlock Foreground="{StaticResource ChangedBrush}" FontWeight="SemiBold" Text="Изменено" />
+                            </Border>
                             <TextBlock HorizontalAlignment="Right" Foreground="#666666" Text="{Binding KindText}" />
                         </StackPanel>
                     </Grid>
                 </Border>
 
-                <Border Grid.Row="1" Padding="6,4" Background="#F7F7F7" BorderBrush="#CFCFCF" BorderThickness="1,1,1,0">
+                <Border Grid.Row="1" Padding="8,5" Background="{StaticResource SurfaceAltBrush}" BorderBrush="{StaticResource DividerBrush}" BorderThickness="0,0,0,1">
                     <DockPanel>
                         <StackPanel DockPanel.Dock="Left" Orientation="Horizontal">
                             <CheckBox VerticalAlignment="Center" Content="Показывать пустые поля"
@@ -382,11 +398,11 @@
                           MouseDoubleClick="FieldsGrid_MouseDoubleClick"
                           CanUserAddRows="False" CanUserDeleteRows="False"
                           CanUserReorderColumns="True" CanUserResizeColumns="True" CanUserSortColumns="True"
-                          HeadersVisibility="Column" GridLinesVisibility="All"
-                          BorderBrush="#CFCFCF" BorderThickness="1"
+                          HeadersVisibility="Column" GridLinesVisibility="Horizontal"
+                          BorderBrush="{StaticResource DividerBrush}" BorderThickness="0,0,0,1"
                           RowHeaderWidth="0" RowHeight="27" ColumnHeaderHeight="28"
-                          AlternatingRowBackground="#F8F8F8"
-                          HorizontalGridLinesBrush="#E0E0E0" VerticalGridLinesBrush="#E0E0E0"
+                          AlternatingRowBackground="{StaticResource SurfaceAltBrush}"
+                          HorizontalGridLinesBrush="{StaticResource DividerBrush}"
                           EnableRowVirtualization="True" EnableColumnVirtualization="True">
                     <DataGrid.ContextMenu>
                         <ContextMenu>
@@ -398,37 +414,38 @@
                     </DataGrid.ContextMenu>
                     <DataGrid.Resources>
                         <Style TargetType="DataGridColumnHeader">
-                            <Setter Property="Background" Value="#E9E9E9" />
+                            <Setter Property="Background" Value="{StaticResource SurfaceAltBrush}" />
                             <Setter Property="FontWeight" Value="SemiBold" />
                             <Setter Property="Padding" Value="5,3" />
-                            <Setter Property="BorderBrush" Value="#C7C7C7" />
-                            <Setter Property="BorderThickness" Value="0,0,1,1" />
+                            <Setter Property="BorderBrush" Value="{StaticResource DividerBrush}" />
+                            <Setter Property="BorderThickness" Value="0,0,0,1" />
                         </Style>
                         <Style TargetType="DataGridCell">
                             <Setter Property="Padding" Value="4,2" />
                             <Setter Property="VerticalContentAlignment" Value="Center" />
+                            <Setter Property="BorderThickness" Value="0" />
                             <Style.Triggers>
                                 <DataTrigger Binding="{Binding Number}" Value="1">
-                                    <Setter Property="Background" Value="#E7F1FA" />
+                                    <Setter Property="Background" Value="{StaticResource PrimarySoftBrush}" />
                                     <Setter Property="FontWeight" Value="SemiBold" />
                                 </DataTrigger>
                                 <DataTrigger Binding="{Binding Number}" Value="3">
-                                    <Setter Property="Background" Value="#F2F2F2" />
+                                    <Setter Property="Background" Value="{StaticResource PrimarySoftBrush}" />
                                     <Setter Property="FontWeight" Value="SemiBold" />
                                 </DataTrigger>
                                 <DataTrigger Binding="{Binding Number}" Value="55">
-                                    <Setter Property="Background" Value="#E7F4EA" />
+                                    <Setter Property="Background" Value="{StaticResource MarkingSoftBrush}" />
                                     <Setter Property="FontWeight" Value="Bold" />
-                                    <Setter Property="Foreground" Value="#245A36" />
+                                    <Setter Property="Foreground" Value="{StaticResource MarkingBrush}" />
                                 </DataTrigger>
                                 <DataTrigger Binding="{Binding Severity}" Value="{x:Static core:IssueSeverity.Info}">
-                                    <Setter Property="Background" Value="#EAF3FB" />
+                                    <Setter Property="Background" Value="{StaticResource PrimarySoftBrush}" />
                                 </DataTrigger>
                                 <DataTrigger Binding="{Binding Severity}" Value="{x:Static core:IssueSeverity.Warning}">
-                                    <Setter Property="Background" Value="#FFF4D6" />
+                                    <Setter Property="Background" Value="{StaticResource ChangedSoftBrush}" />
                                 </DataTrigger>
                                 <DataTrigger Binding="{Binding Severity}" Value="{x:Static core:IssueSeverity.Error}">
-                                    <Setter Property="Background" Value="#FDE9E9" />
+                                    <Setter Property="Background" Value="{StaticResource ErrorSoftBrush}" />
                                 </DataTrigger>
                             </Style.Triggers>
                         </Style>
@@ -439,14 +456,20 @@
                         <DataGridTemplateColumn Header="Значение" Width="180">
                             <DataGridTemplateColumn.CellTemplate>
                                 <DataTemplate>
-                                    <TextBlock FontFamily="Consolas" Text="{Binding RawValue}" TextTrimming="CharacterEllipsis" />
+                                    <TextBlock FontFamily="Consolas" Text="{Binding DisplayValue}" TextTrimming="CharacterEllipsis" ToolTip="{Binding DisplayValue}">
+                                        <TextBlock.Style>
+                                            <Style TargetType="TextBlock">
+                                                <Style.Triggers><DataTrigger Binding="{Binding IsValueEmpty}" Value="True"><Setter Property="Foreground" Value="{StaticResource MutedTextBrush}" /><Setter Property="FontStyle" Value="Italic" /></DataTrigger></Style.Triggers>
+                                            </Style>
+                                        </TextBlock.Style>
+                                    </TextBlock>
                                 </DataTemplate>
                             </DataGridTemplateColumn.CellTemplate>
                         </DataGridTemplateColumn>
                         <DataGridTemplateColumn Header="Расшифровка" Width="*">
                             <DataGridTemplateColumn.CellTemplate>
                                 <DataTemplate>
-                                    <TextBlock Text="{Binding Interpretation}" TextTrimming="CharacterEllipsis" />
+                                    <TextBlock Text="{Binding Interpretation}" TextTrimming="CharacterEllipsis" ToolTip="{Binding Interpretation}" />
                                 </DataTemplate>
                             </DataGridTemplateColumn.CellTemplate>
                         </DataGridTemplateColumn>
@@ -454,7 +477,7 @@
                     </DataGrid.Columns>
                 </DataGrid>
 
-                <Border Grid.Row="3" Margin="0,5,0,0" Padding="7,5" Background="#FFFDF4" BorderBrush="#D9CC9E" BorderThickness="1">
+                <Border Grid.Row="3" Margin="0,5,0,0" Padding="7,5" Background="{StaticResource SurfaceAltBrush}" BorderThickness="0">
                     <Grid>
                         <Grid.ColumnDefinitions><ColumnDefinition Width="135" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions>
                         <TextBlock FontWeight="SemiBold" Text="Полный текст ячейки:" />
@@ -491,7 +514,7 @@
                         <TextBlock Grid.Column="6" Text="{Binding Purpose}" TextWrapping="Wrap" />
 
                         <Border Grid.Row="1" Grid.ColumnSpan="7" Margin="0,7,0,0" Padding="7,5"
-                                Background="#F6F8FA" BorderBrush="#D5DADF" BorderThickness="1"
+                                Background="{StaticResource SurfaceAltBrush}" BorderThickness="0"
                                 Visibility="{Binding HasExtendedInterpretation, Converter={StaticResource BooleanToVisibilityConverter}}">
                             <Grid>
                                 <Grid.ColumnDefinitions>
@@ -508,7 +531,7 @@
                 </GroupBox>
 
                 <Expander Grid.Row="5" Margin="0,4,0,0" Header="Исходная строка и диагностика">
-                    <Border Padding="6" Background="White" BorderBrush="#CFCFCF" BorderThickness="1">
+                    <Border Padding="6" Background="White" BorderThickness="0">
                         <StackPanel>
                             <TextBlock Text="{Binding DetailText}" TextWrapping="Wrap" />
                             <TextBlock Margin="0,3,0,3" Foreground="#555555" FontSize="11" Text="{Binding Definition.ManualReference}" />
