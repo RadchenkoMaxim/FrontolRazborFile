@@ -26,6 +26,8 @@ Assert(product.Fields[54].Interpretation.Contains("Разливное пиво",
 Assert(product.Fields[54].HasExtendedInterpretation, "Содержательная расшифровка поля 55 должна раскрываться в панели подробностей.");
 Assert(product.Fields[51].Interpretation.Contains("Разрешена", StringComparison.Ordinal), "Пустое поле 52 должно применять значение по умолчанию 1.");
 Assert(product.Fields[65].Interpretation == "Литр", "Поле 66 должно расшифровываться как литр.");
+Assert(product.IsProductRecord && product.ProductTypeCode == "18" && product.ProductTypeText == "Разливное пиво",
+    "Товарная строка должна предоставлять код и название вида маркировки для фильтра.");
 Assert(!product.Fields[66].WasProvided && !product.Fields[67].WasProvided, "Поля 67 и 68 должны отмечаться как не переданные.");
 var unprovidedField = product.Fields.First(field => field.Interpretation == "Не передано");
 Assert(!unprovidedField.HasExtendedInterpretation, "Значение «Не передано» не должно создавать большой блок расшифровки.");

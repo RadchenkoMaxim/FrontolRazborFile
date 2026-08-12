@@ -5,6 +5,7 @@
         Title="Анализатор файла обмена Frontol"
         Icon="Assets/app.ico"
         Width="1440" Height="820" MinWidth="1080" MinHeight="650"
+        WindowState="Maximized"
         WindowStartupLocation="CenterScreen"
         Background="#F0F0F0"
         AllowDrop="True"
@@ -62,15 +63,19 @@
         </ToolBarTray>
 
         <Border Grid.Row="2" Padding="8,5" Background="White" BorderBrush="#D2D2D2" BorderThickness="0,1,0,1">
-            <DockPanel LastChildFill="False">
-                <StackPanel DockPanel.Dock="Left" Orientation="Horizontal">
+            <Grid>
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                </Grid.RowDefinitions>
+                <StackPanel Orientation="Horizontal">
                     <TextBlock FontWeight="SemiBold" Text="{Binding RecordCountLabel}" />
                     <Border Margin="14,0" BorderBrush="#BFBFBF" BorderThickness="1,0,0,0" />
                     <TextBlock Text="{Binding EncodingLabel}" />
                     <Border Margin="14,0" BorderBrush="#BFBFBF" BorderThickness="1,0,0,0" />
                     <TextBlock Text="{Binding ProblemCountLabel}" />
                 </StackPanel>
-                <StackPanel DockPanel.Dock="Right" Orientation="Horizontal">
+                <StackPanel Grid.Row="1" Margin="0,6,0,0" Orientation="Horizontal">
                     <TextBlock Margin="0,0,4,0" VerticalAlignment="Center" Text="Поиск:" />
                     <TextBox Width="220" TextChanged="Search_TextChanged" />
                     <TextBlock Margin="12,0,4,0" VerticalAlignment="Center" Text="Показывать:" />
@@ -80,8 +85,14 @@
                         <ComboBoxItem Content="Только ошибки" />
                         <ComboBoxItem Content="Только строки данных" />
                     </ComboBox>
+                    <TextBlock Margin="12,0,4,0" VerticalAlignment="Center" Text="Вид маркировки:" />
+                    <ComboBox Width="285"
+                              ItemsSource="{Binding MarkingFilters}"
+                              SelectedItem="{Binding SelectedMarkingFilter, Mode=TwoWay}"
+                              DisplayMemberPath="DisplayText"
+                              ToolTip="Отбор товарных строк по полю 55" />
                 </StackPanel>
-            </DockPanel>
+            </Grid>
         </Border>
 
         <Border Grid.Row="3" Padding="8,5" Background="#EAF3FB" BorderBrush="#AFC9E0" BorderThickness="0,0,0,1"
@@ -99,7 +110,7 @@
 
         <Grid Grid.Row="4" Margin="6">
             <Grid.ColumnDefinitions>
-                <ColumnDefinition x:Name="RecordsColumn" Width="540" MinWidth="360" />
+                <ColumnDefinition x:Name="RecordsColumn" Width="655" MinWidth="480" />
                 <ColumnDefinition Width="27" />
                 <ColumnDefinition Width="*" />
             </Grid.ColumnDefinitions>
@@ -130,11 +141,32 @@
                     </ListView.ItemContainerStyle>
                     <ListView.View>
                         <GridView AllowsColumnReorder="True">
-                            <GridViewColumn Header="Строка" Width="58" DisplayMemberBinding="{Binding LineNumber}" />
-                            <GridViewColumn Header="Команда" Width="130" DisplayMemberBinding="{Binding CommandText}" />
-                            <GridViewColumn Header="Код" Width="88" DisplayMemberBinding="{Binding CodeText}" />
-                            <GridViewColumn Header="Товар / содержимое" Width="195" DisplayMemberBinding="{Binding ContentText}" />
-                            <GridViewColumn Header="Статус" Width="62" DisplayMemberBinding="{Binding StatusText}" />
+                            <GridViewColumn Header="Строка" Width="52" DisplayMemberBinding="{Binding LineNumber}" />
+                            <GridViewColumn Header="Команда" Width="108" DisplayMemberBinding="{Binding CommandText}" />
+                            <GridViewColumn Header="Код" Width="88">
+                                <GridViewColumn.CellTemplate>
+                                    <DataTemplate>
+                                        <TextBlock FontFamily="Consolas" FontWeight="Bold" Foreground="#123F66"
+                                                   Text="{Binding CodeText}" TextTrimming="CharacterEllipsis" />
+                                    </DataTemplate>
+                                </GridViewColumn.CellTemplate>
+                            </GridViewColumn>
+                            <GridViewColumn Header="Наименование" Width="190">
+                                <GridViewColumn.CellTemplate>
+                                    <DataTemplate>
+                                        <TextBlock FontWeight="SemiBold" Text="{Binding ContentText}" TextTrimming="CharacterEllipsis" />
+                                    </DataTemplate>
+                                </GridViewColumn.CellTemplate>
+                            </GridViewColumn>
+                            <GridViewColumn Header="Вид маркировки" Width="160">
+                                <GridViewColumn.CellTemplate>
+                                    <DataTemplate>
+                                        <TextBlock FontWeight="SemiBold" Foreground="#24613B"
+                                                   Text="{Binding ProductTypeText}" TextTrimming="CharacterEllipsis" />
+                                    </DataTemplate>
+                                </GridViewColumn.CellTemplate>
+                            </GridViewColumn>
+                            <GridViewColumn Header="Статус" Width="56" DisplayMemberBinding="{Binding StatusText}" />
                         </GridView>
                     </ListView.View>
                 </ListView>
@@ -168,6 +200,41 @@
                             <TextBlock FontSize="15" FontWeight="SemiBold" Text="{Binding Title, TargetNullValue=Файл не открыт}" />
                             <TextBlock Margin="0,2,0,0" Foreground="#555555"
                                        Text="{Binding Summary, TargetNullValue=Выберите файл обмена Frontol для анализа}" />
+                            <Grid Margin="0,6,0,1"
+                                  Visibility="{Binding IsProductRecord, Converter={StaticResource BooleanToVisibilityConverter}}">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="Auto" />
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <Border Padding="7,4" Background="#E7F1FA" BorderBrush="#A9C8E2" BorderThickness="1" CornerRadius="2">
+                                    <StackPanel Orientation="Horizontal">
+                                        <TextBlock Margin="0,0,5,0" Foreground="#315A7D" Text="Код:" />
+                                        <TextBlock FontFamily="Consolas" FontWeight="Bold" Foreground="#123F66" Text="{Binding CodeText}" />
+                                    </StackPanel>
+                                </Border>
+                                <Border Grid.Column="1" Margin="6,0" Padding="7,4" Background="#F5F5F5" BorderBrush="#D2D2D2" BorderThickness="1" CornerRadius="2">
+                                    <Grid>
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="Auto" />
+                                            <ColumnDefinition Width="*" />
+                                        </Grid.ColumnDefinitions>
+                                        <TextBlock Margin="0,0,5,0" Foreground="#5B5B5B" Text="Наименование:" />
+                                        <TextBlock Grid.Column="1" FontWeight="SemiBold" Text="{Binding ContentText}" TextTrimming="CharacterEllipsis" />
+                                    </Grid>
+                                </Border>
+                                <Border Grid.Column="2" MaxWidth="290" Padding="7,4" Background="#E7F4EA" BorderBrush="#A9CFB4" BorderThickness="1" CornerRadius="2">
+                                    <Grid>
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="Auto" />
+                                            <ColumnDefinition Width="*" />
+                                        </Grid.ColumnDefinitions>
+                                        <TextBlock Margin="0,0,5,0" Foreground="#477153" Text="Маркировка:" />
+                                        <TextBlock Grid.Column="1" FontWeight="Bold" Foreground="#24613B"
+                                                   Text="{Binding ProductTypeText}" TextTrimming="CharacterEllipsis" />
+                                    </Grid>
+                                </Border>
+                            </Grid>
                         </StackPanel>
                         <StackPanel Grid.Column="1" Margin="12,0,0,0" HorizontalAlignment="Right">
                             <TextBlock HorizontalAlignment="Right" FontWeight="SemiBold" Text="{Binding StatusText}" />
@@ -214,6 +281,19 @@
                             <Setter Property="Padding" Value="4,2" />
                             <Setter Property="VerticalContentAlignment" Value="Center" />
                             <Style.Triggers>
+                                <DataTrigger Binding="{Binding Number}" Value="1">
+                                    <Setter Property="Background" Value="#E7F1FA" />
+                                    <Setter Property="FontWeight" Value="SemiBold" />
+                                </DataTrigger>
+                                <DataTrigger Binding="{Binding Number}" Value="3">
+                                    <Setter Property="Background" Value="#F2F2F2" />
+                                    <Setter Property="FontWeight" Value="SemiBold" />
+                                </DataTrigger>
+                                <DataTrigger Binding="{Binding Number}" Value="55">
+                                    <Setter Property="Background" Value="#E7F4EA" />
+                                    <Setter Property="FontWeight" Value="Bold" />
+                                    <Setter Property="Foreground" Value="#245A36" />
+                                </DataTrigger>
                                 <DataTrigger Binding="{Binding Severity}" Value="{x:Static core:IssueSeverity.Info}">
                                     <Setter Property="Background" Value="#EAF3FB" />
                                 </DataTrigger>

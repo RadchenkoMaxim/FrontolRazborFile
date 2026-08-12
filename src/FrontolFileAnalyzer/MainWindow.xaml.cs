@@ -20,6 +20,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
     private readonly AppSettingsStore _settingsStore = new();
     private readonly AnalyzerSettings _settings;
     private readonly ObservableCollection<AnalyzedField> _visibleFields = [];
+    private readonly ObservableCollection<MarkingFilterOption> _markingFilters = [];
     private ObservableCollection<ParsedRecord> _records = [];
     private ICollectionView _recordsView = null!;
     private string _filePath = "Файл не выбран";
@@ -37,7 +38,8 @@ public partial class MainWindow : Window, INotifyPropertyChanged
     private bool _loadProgressIsIndeterminate;
     private bool _isLoading;
     private bool _showEmptyFields;
-    private GridLength _recordsPaneWidth = new(540);
+    private MarkingFilterOption? _selectedMarkingFilter;
+    private GridLength _recordsPaneWidth = new(655);
 
     public MainWindow()
     {
@@ -57,7 +59,21 @@ public partial class MainWindow : Window, INotifyPropertyChanged
     }
 
     public ObservableCollection<AnalyzedField> VisibleFields => _visibleFields;
+    public ObservableCollection<MarkingFilterOption> MarkingFilters => _markingFilters;
     public string VersionLabel => ApplicationInfo.VersionLabel;
+
+    public MarkingFilterOption? SelectedMarkingFilter
+    {
+        get => _selectedMarkingFilter;
+        set
+        {
+            if (SetField(ref _selectedMarkingFilter, value))
+            {
+                RecordsView.Refresh();
+                SelectFirstVisibleRecord();
+            }
+        }
+    }
 
     public string FilePath
     {
@@ -237,6 +253,15 @@ public partial class MainWindow : Window, INotifyPropertyChanged
             var screenshotPath = arguments[screenshotIndex + 1];
             var inputPath = arguments[screenshotIndex + 2];
             await LoadFileAsync(inputPath);
+            var markingFilterIndex = Array.FindIndex(arguments, argument =>
+                argument.Equals("--marking-filter", StringComparison.OrdinalIgnoreCase));
+            if (markingFilterIndex >= 0 && arguments.Length > markingFilterIndex + 1)
+            {
+                var requestedCode = arguments[markingFilterIndex + 1];
+                SelectedMarkingFilter = MarkingFilters.FirstOrDefault(option =>
+                    string.Equals(option.Code, requestedCode, StringComparison.OrdinalIgnoreCase))
+                    ?? SelectedMarkingFilter;
+            }
             if (arguments.Any(argument => argument.Equals("--collapse-records", StringComparison.OrdinalIgnoreCase)))
             {
                 SetRecordsPaneVisibility(false);
@@ -367,7 +392,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
 
         RecordsColumn.MinWidth = isVisible ? 360 : 0;
         RecordsColumn.Width = isVisible
-            ? (_recordsPaneWidth.Value > 0 ? _recordsPaneWidth : new GridLength(540))
+            ? (_recordsPaneWidth.Value > 0 ? _recordsPaneWidth : new GridLength(655))
             : new GridLength(0);
         RecordsPanel.Visibility = isVisible ? Visibility.Visible : Visibility.Collapsed;
         ToggleRecordsPaneButton.Content = isVisible ? "◀" : "▶";
@@ -415,6 +440,12 @@ public partial class MainWindow : Window, INotifyPropertyChanged
             return false;
         }
 
+        if (SelectedMarkingFilter?.Code is { } productTypeCode &&
+            !string.Equals(record.ProductTypeCode, productTypeCode, StringComparison.OrdinalIgnoreCase))
+        {
+            return false;
+        }
+
         return _filterIndex switch
         {
             1 => record.Severity is IssueSeverity.Warning or IssueSeverity.Error,
@@ -449,6 +480,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
             LoadProgressText = "Подготовка списка строк";
             _records = new ObservableCollection<ParsedRecord>(document.Records);
             ReplaceRecordsView(_records);
+            RebuildMarkingFilters(document.Records);
 
             FilePath = document.FilePath;
             EncodingLabel = $"Кодировка: {document.EncodingName}";
@@ -486,6 +518,47 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         var view = CollectionViewSource.GetDefaultView(records);
         view.Filter = FilterRecord;
         RecordsView = view;
+    }
+
+    private void RebuildMarkingFilters(IReadOnlyList<ParsedRecord> records)
+    {
+        var previousCode = SelectedMarkingFilter?.Code;
+        var productRecords = records.Where(record => record.IsProductRecord).ToArray();
+        var options = productRecords
+            .GroupBy(record => record.ProductTypeCode ?? string.Empty, StringComparer.OrdinalIgnoreCase)
+            .Select(group =>
+            {
+                var code = group.Key;
+                var name = FrontolReferenceCatalog.ProductTypeValues.TryGetValue(code, out var knownName)
+                    ? knownName
+                    : $"Неизвестный код {code}";
+                return new MarkingFilterOption(code, name, group.Count());
+            })
+            .OrderBy(option => int.TryParse(option.Code, out var number) ? number : int.MaxValue)
+            .ThenBy(option => option.Name, StringComparer.CurrentCultureIgnoreCase)
+            .ToArray();
+
+        _markingFilters.Clear();
+        _markingFilters.Add(new MarkingFilterOption(null, "Все виды маркировки", productRecords.Length));
+        foreach (var option in options)
+        {
+            _markingFilters.Add(option);
+        }
+
+        SelectedMarkingFilter = previousCode is null
+            ? _markingFilters[0]
+            : _markingFilters.FirstOrDefault(option =>
+                string.Equals(option.Code, previousCode, StringComparison.OrdinalIgnoreCase)) ?? _markingFilters[0];
+    }
+
+    private void SelectFirstVisibleRecord()
+    {
+        if (SelectedRecord is not null && RecordsView.Contains(SelectedRecord))
+        {
+            return;
+        }
+
+        SelectedRecord = RecordsView.Cast<ParsedRecord>().FirstOrDefault();
     }
 
     private void RefreshVisibleFields()
@@ -561,4 +634,15 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         using var stream = File.Create(path);
         encoder.Save(stream);
     }
+}
+
+public sealed class MarkingFilterOption(string? code, string name, int count)
+{
+    public string? Code { get; } = code;
+    public string Name { get; } = name;
+    public int Count { get; } = count;
+
+    public string DisplayText => Code is null
+        ? $"{Name} ({Count:N0})"
+        : $"{Code} — {Name} ({Count:N0})";
 }

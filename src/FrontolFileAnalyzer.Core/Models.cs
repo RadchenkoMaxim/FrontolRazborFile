@@ -156,6 +156,29 @@ public sealed class ParsedRecord
 
     public string CodeText => Kind == FrontolRecordKind.Data && Fields.Count > 0 ? Fields[0].RawValue : string.Empty;
 
+    public bool IsProductRecord =>
+        Kind == FrontolRecordKind.Data &&
+        CommandName?.Contains("QUANTITY", StringComparison.OrdinalIgnoreCase) == true &&
+        Fields.Count >= 55;
+
+    public string? ProductTypeCode
+    {
+        get
+        {
+            if (!IsProductRecord)
+            {
+                return null;
+            }
+
+            var value = Fields[54].RawValue.Trim();
+            return value.Length == 0 ? "0" : value;
+        }
+    }
+
+    public string ProductTypeText => ProductTypeCode is { } code
+        ? FrontolReferenceCatalog.ProductTypeValues.TryGetValue(code, out var name) ? name : $"Код {code}"
+        : string.Empty;
+
     public string ContentText
     {
         get
