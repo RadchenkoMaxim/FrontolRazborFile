@@ -16,6 +16,7 @@ public partial class FieldEditWindow : Window, INotifyPropertyChanged
 
     private readonly EditorMode _mode;
     private string _simpleValue;
+    private string _choiceInput = string.Empty;
     private ChoiceItem? _selectedChoice;
 
     public FieldEditWindow(int lineNumber, AnalyzedField field, FieldDefinition? definition)
@@ -40,7 +41,9 @@ public partial class FieldEditWindow : Window, INotifyPropertyChanged
         }
         else if (definition?.Values is { Count: > 0 } values)
         {
-            _mode = EditorMode.Choice;
+            IsChoiceEditable = field.Number == 55 &&
+                               string.Equals(field.Name, "Тип номенклатуры / маркировки", StringComparison.OrdinalIgnoreCase);
+            _mode = IsChoiceEditable ? EditorMode.EditableChoice : EditorMode.Choice;
             var choices = values
                 .Select(pair => new ChoiceItem(pair.Key, pair.Value))
                 .OrderBy(item => int.TryParse(item.Code, out var number) ? number : int.MaxValue)
@@ -54,8 +57,11 @@ public partial class FieldEditWindow : Window, INotifyPropertyChanged
             }
             Choices = choices;
             SelectedChoice = choices.First(item => item.Code == field.RawValue);
+            ChoiceInput = SelectedChoice.DisplayText;
             Flags = [];
-            EditorHint = "Выберите допустимое значение из справочника Frontol.";
+            EditorHint = IsChoiceEditable
+                ? "Выберите известный тип или введите вручную любой новый целый код."
+                : "Выберите допустимое значение из справочника Frontol.";
         }
         else
         {
@@ -69,7 +75,7 @@ public partial class FieldEditWindow : Window, INotifyPropertyChanged
         DataContext = this;
         SourceInitialized += (_, _) => WindowBoundsHelper.ConstrainToOwnerWorkingArea(this);
         SimpleValueText.Visibility = _mode == EditorMode.Text ? Visibility.Visible : Visibility.Collapsed;
-        ChoiceBox.Visibility = _mode == EditorMode.Choice ? Visibility.Visible : Visibility.Collapsed;
+        ChoiceBox.Visibility = _mode is EditorMode.Choice or EditorMode.EditableChoice ? Visibility.Visible : Visibility.Collapsed;
         FlagsScroller.Visibility = _mode == EditorMode.Flags ? Visibility.Visible : Visibility.Collapsed;
         if (_mode == EditorMode.Flags)
         {
@@ -83,10 +89,13 @@ public partial class FieldEditWindow : Window, INotifyPropertyChanged
                 SimpleValueText.Focus();
                 SimpleValueText.SelectAll();
             }
-            else if (_mode == EditorMode.Choice)
+            else if (_mode is EditorMode.Choice or EditorMode.EditableChoice)
             {
                 ChoiceBox.Focus();
-                ChoiceBox.IsDropDownOpen = true;
+                if (_mode == EditorMode.Choice)
+                {
+                    ChoiceBox.IsDropDownOpen = true;
+                }
             }
         };
     }
@@ -97,6 +106,7 @@ public partial class FieldEditWindow : Window, INotifyPropertyChanged
     public string Purpose { get; }
     public string CurrentDisplayValue { get; }
     public string EditorHint { get; }
+    public bool IsChoiceEditable { get; }
     public IReadOnlyList<ChoiceItem> Choices { get; }
     public IReadOnlyList<FlagItem> Flags { get; }
 
@@ -109,12 +119,27 @@ public partial class FieldEditWindow : Window, INotifyPropertyChanged
     public ChoiceItem? SelectedChoice
     {
         get => _selectedChoice;
-        set { _selectedChoice = value; OnPropertyChanged(); }
+        set
+        {
+            _selectedChoice = value;
+            OnPropertyChanged();
+            if (IsChoiceEditable && value is not null)
+            {
+                ChoiceInput = value.DisplayText;
+            }
+        }
+    }
+
+    public string ChoiceInput
+    {
+        get => _choiceInput;
+        set { _choiceInput = value ?? string.Empty; OnPropertyChanged(); }
     }
 
     public string Value => _mode switch
     {
         EditorMode.Choice => SelectedChoice?.Code ?? string.Empty,
+        EditorMode.EditableChoice => ResolveEditableChoiceValue(),
         EditorMode.Flags => string.Join(',', Flags.Select(item => item.IsEnabled ? "1" : "0")),
         _ => SimpleValue
     };
@@ -127,13 +152,28 @@ public partial class FieldEditWindow : Window, INotifyPropertyChanged
             ValidationText.Text = "Значение поля не может содержать точку с запятой или перевод строки.";
             return;
         }
+        if (_mode == EditorMode.EditableChoice && Value.Length > 0 && !int.TryParse(Value, out _))
+        {
+            ValidationText.Text = "Введите целый код, например 4, 18 или новый код из вашей версии Frontol.";
+            ChoiceBox.Focus();
+            return;
+        }
         DialogResult = true;
+    }
+
+    private string ResolveEditableChoiceValue()
+    {
+        var input = ChoiceInput.Trim();
+        var known = Choices.FirstOrDefault(item =>
+            string.Equals(item.Code, input, StringComparison.OrdinalIgnoreCase) ||
+            string.Equals(item.DisplayText, input, StringComparison.CurrentCultureIgnoreCase));
+        return known?.Code ?? input;
     }
 
     private void OnPropertyChanged([CallerMemberName] string? propertyName = null) =>
         PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(propertyName));
 
-    private enum EditorMode { Text, Choice, Flags }
+    private enum EditorMode { Text, Choice, EditableChoice, Flags }
 }
 
 public sealed record ChoiceItem(string Code, string Name)

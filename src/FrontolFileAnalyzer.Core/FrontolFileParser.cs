@@ -346,7 +346,9 @@ public sealed class FrontolFileParser
             return (IssueSeverity.Error, "ожидалась дата");
         }
 
-        if (definition.Values is not null && !definition.Values.ContainsKey(rawValue))
+        if (definition.Values is not null &&
+            !definition.AllowUnknownValues &&
+            !definition.Values.ContainsKey(rawValue))
         {
             return (IssueSeverity.Warning, $"значение «{rawValue}» отсутствует в перечне руководства");
         }

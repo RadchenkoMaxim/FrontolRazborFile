@@ -34,7 +34,8 @@ public sealed record FieldDefinition(
     string Purpose,
     string? DefaultValue = null,
     IReadOnlyDictionary<string, string>? Values = null,
-    Func<string, string?>? CustomInterpreter = null)
+    Func<string, string?>? CustomInterpreter = null,
+    bool AllowUnknownValues = false)
 {
     public string RequiredText => Required ? "Да" : "Нет";
 }

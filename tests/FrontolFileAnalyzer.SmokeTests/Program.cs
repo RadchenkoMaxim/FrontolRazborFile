@@ -43,6 +43,32 @@ var editedDocument = new FrontolFileParser().ParseLines(args[0], editedLines, do
 var editedProduct = editedDocument.Records.Single(record => record.LineNumber == product.LineNumber);
 Assert(editedProduct.ContentText == "Изменённое тестовое наименование" && editedProduct.Fields[2].RawValue == editedProduct.ContentText,
     "Повторный разбор отредактированной физической строки должен обновлять значение и сводку товара.");
+
+var unlistedProductTypeLines = document.Records.Select(record => record.RawText).ToArray();
+var unlistedProductTypeParts = unlistedProductTypeLines[product.LineNumber - 1].Split(';', StringSplitOptions.None).ToList();
+while (unlistedProductTypeParts.Count < 55)
+{
+    unlistedProductTypeParts.Add(string.Empty);
+}
+unlistedProductTypeParts[54] = "999";
+unlistedProductTypeLines[product.LineNumber - 1] = string.Join(';', unlistedProductTypeParts);
+var unlistedProductTypeDocument = new FrontolFileParser().ParseLines(args[0], unlistedProductTypeLines, document.EncodingName);
+var unlistedProductTypeRecord = unlistedProductTypeDocument.Records.Single(record => record.LineNumber == product.LineNumber);
+var unlistedProductTypeField = unlistedProductTypeRecord.Fields[54];
+Assert(unlistedProductTypeField.RawValue == "999" && unlistedProductTypeRecord.ProductTypeCode == "999",
+    "Целый код поля 55, которого ещё нет во встроенном справочнике, должен сохраняться без замены.");
+Assert(unlistedProductTypeField.Severity == IssueSeverity.None && unlistedProductTypeRecord.Severity == IssueSeverity.None,
+    "Неизвестный целый код поля 55 должен считаться допустимым без предупреждения.");
+Assert(unlistedProductTypeRecord.ProductTypeText == "Код 999",
+    "Неизвестный код поля 55 должен отображаться в UI без вымышленной расшифровки.");
+
+unlistedProductTypeParts[54] = "новый-код";
+unlistedProductTypeLines[product.LineNumber - 1] = string.Join(';', unlistedProductTypeParts);
+var invalidProductTypeDocument = new FrontolFileParser().ParseLines(args[0], unlistedProductTypeLines, document.EncodingName);
+var invalidProductTypeField = invalidProductTypeDocument.Records.Single(record => record.LineNumber == product.LineNumber).Fields[54];
+Assert(invalidProductTypeField.Severity == IssueSeverity.Error &&
+       invalidProductTypeField.Diagnostic.Contains("ожидалось целое число", StringComparison.Ordinal),
+    "Нецелое значение поля 55 должно оставаться ошибкой формата.");
 var unprovidedField = product.Fields.First(field => field.Interpretation == "Не передано");
 Assert(!unprovidedField.HasExtendedInterpretation, "Значение «Не передано» не должно создавать большой блок расшифровки.");
 

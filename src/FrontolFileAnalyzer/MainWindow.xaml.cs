@@ -428,11 +428,28 @@ public partial class MainWindow : Window, INotifyPropertyChanged
             return;
         }
 
-        var argument = arguments.FirstOrDefault(File.Exists);
+        var argument = ResolveStartupFilePath(arguments);
         if (argument is not null)
         {
             await LoadFileAsync(argument);
         }
+    }
+
+    private static string? ResolveStartupFilePath(IReadOnlyList<string> arguments)
+    {
+        for (var length = arguments.Count; length > 0; length--)
+        {
+            for (var start = 0; start + length <= arguments.Count; start++)
+            {
+                var candidate = string.Join(' ', arguments.Skip(start).Take(length)).Trim().Trim('"');
+                if (File.Exists(candidate))
+                {
+                    return Path.GetFullPath(candidate);
+                }
+            }
+        }
+
+        return null;
     }
 
     private async void OpenFile_Click(object sender, RoutedEventArgs e)
@@ -1460,6 +1477,8 @@ public partial class MainWindow : Window, INotifyPropertyChanged
 
     private async Task LoadFileAsync(string path)
     {
+        var requestedPath = path.Trim().Trim('"');
+
         try
         {
             IsLoading = true;
@@ -1477,8 +1496,8 @@ public partial class MainWindow : Window, INotifyPropertyChanged
                     : $"{value.Stage}: {value.ProcessedLines:N0} из {value.TotalLines:N0} ({value.Percent}%)";
             });
 
-            var sourceBytes = await File.ReadAllBytesAsync(path);
-            var document = await Task.Run(() => _parser.ParseBytes(path, sourceBytes, progress));
+            var sourceBytes = await File.ReadAllBytesAsync(requestedPath);
+            var document = await Task.Run(() => _parser.ParseBytes(requestedPath, sourceBytes, progress));
             _loadedFileHash = Convert.ToHexString(SHA256.HashData(sourceBytes));
             _encodingName = document.EncodingName;
             _sourceEncoding = EncodingFor(document.EncodingName);
@@ -1519,15 +1538,52 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         }
         catch (Exception exception)
         {
-            StatusMessage = "Не удалось прочитать файл";
-            MessageBox.Show(this, exception.Message, "Ошибка открытия файла", MessageBoxButton.OK, MessageBoxImage.Error);
+            ResetLoadProgress();
+
+            var displayPath = GetDisplayPath(requestedPath);
+            var reason = exception switch
+            {
+                FileNotFoundException or DirectoryNotFoundException => "Файл не найден",
+                UnauthorizedAccessException => "Нет доступа к файлу",
+                IOException => "Не удалось прочитать файл",
+                _ => "Не удалось открыть файл"
+            };
+
+            StatusMessage = $"{reason}. Выберите файл заново";
+            MessageBox.Show(
+                this,
+                $"{reason}:\n{displayPath}\n\nНажмите «Открыть» и выберите файл заново.",
+                "Не удалось открыть файл",
+                MessageBoxButton.OK,
+                MessageBoxImage.Error);
         }
         finally
         {
-            IsLoading = false;
-            LoadProgressIsIndeterminate = false;
-            LoadProgressValue = 100;
-            LoadProgressText = string.Empty;
+            ResetLoadProgress();
+        }
+    }
+
+    private void ResetLoadProgress()
+    {
+        IsLoading = false;
+        LoadProgressIsIndeterminate = false;
+        LoadProgressValue = 0;
+        LoadProgressText = string.Empty;
+    }
+
+    private static string GetDisplayPath(string path)
+    {
+        try
+        {
+            return Path.GetFullPath(path);
+        }
+        catch (Exception) when (string.IsNullOrWhiteSpace(path))
+        {
+            return "Путь не указан";
+        }
+        catch (Exception)
+        {
+            return path;
         }
     }
 

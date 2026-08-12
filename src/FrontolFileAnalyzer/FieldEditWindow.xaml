@@ -32,6 +32,8 @@
                      FontFamily="Consolas" FontSize="14" Text="{Binding SimpleValue, UpdateSourceTrigger=PropertyChanged}" />
 
             <ComboBox x:Name="ChoiceBox" Height="36" VerticalAlignment="Top"
+                      IsEditable="{Binding IsChoiceEditable}" IsTextSearchEnabled="False"
+                      Text="{Binding ChoiceInput, UpdateSourceTrigger=PropertyChanged}"
                       ItemsSource="{Binding Choices}" SelectedItem="{Binding SelectedChoice, Mode=TwoWay}"
                       DisplayMemberPath="DisplayText" />
 

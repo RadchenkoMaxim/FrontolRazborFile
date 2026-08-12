@@ -238,7 +238,10 @@ public static partial class FrontolCommandCatalog
             ("0", "Запрещена"), ("1", "Разрешена"))),
         F(53, "Вид алкогольной продукции", false, "Целое", "Код вида алкогольной/спиртосодержащей продукции", "10"),
         F(54, "Емкость тары", false, "Дробное 10.6", "Емкость тары, л", "1,000", custom: value => WithUnit(value, "Емкость", "л")),
-        F(55, "Тип номенклатуры / маркировки", false, "Целое", "Категория товара и маркированной продукции", "0", FrontolReferenceCatalog.ProductTypeValues),
+        F(55, "Тип номенклатуры / маркировки", false, "Целое", "Категория товара и маркированной продукции", "0",
+            values: FrontolReferenceCatalog.ProductTypeValues,
+            custom: value => string.IsNullOrEmpty(value) ? null : $"Код {value} · пока отсутствует во встроенном справочнике",
+            allowUnknownValues: true),
         F(56, "Акцизная марка алкоголя", false, "Целое", "Признак акцизной марки", "0", Map(
             ("0", "С акцизной маркой"), ("1", "Без акцизной марки"))),
         F(57, "Крепость", false, "Дробное***", "Крепость алкогольной/спиртосодержащей продукции, %; допустимо 0,001–100,000", "0,1", custom: value => WithUnit(value, "Крепость", "%")),
@@ -323,8 +326,9 @@ public static partial class FrontolCommandCatalog
         string purpose,
         string? defaultValue = null,
         IReadOnlyDictionary<string, string>? values = null,
-        Func<string, string?>? custom = null) =>
-        new(number, name, required, dataType, purpose, defaultValue, values, custom);
+        Func<string, string?>? custom = null,
+        bool allowUnknownValues = false) =>
+        new(number, name, required, dataType, purpose, defaultValue, values, custom, allowUnknownValues);
 
     private static IReadOnlyDictionary<string, string> Map(params (string Key, string Value)[] values) =>
         new ReadOnlyDictionary<string, string>(values.ToDictionary(pair => pair.Key, pair => pair.Value, StringComparer.OrdinalIgnoreCase));
