@@ -1,4 +1,5 @@
 using FrontolFileAnalyzer.Core;
+using System.Text;
 using System.Text.RegularExpressions;
 
 if (args.Length is < 1 or > 2 || !File.Exists(args[0]) || (args.Length == 2 && !File.Exists(args[1])))
@@ -52,6 +53,27 @@ Assert(deleteBarcodes.Fields[1].Interpretation.Contains("все штрихкод
 var classifierLink = document.Records.Single(record => record.LineNumber == 8);
 Assert(classifierLink.Fields.Count == 4, "Завершающая точка с запятой должна отображаться отдельным пустым сегментом.");
 Assert(classifierLink.Fields[3].Severity == IssueSeverity.Info, "Завершающий пустой сегмент должен иметь информационный статус.");
+Assert(classifierLink.Fields[3].WasProvided && classifierLink.Fields[3].DisplayValue == "пусто",
+    "Переданный пустой сегмент нужно отличать от непереданного поля.");
+
+var serviceProgress = new List<FrontolParseProgress>();
+new FrontolFileParser().ParseLines(args[0], ["#", "$$$DELETEALLWARES", "$$$DELETEALLTAXRATES"], "UTF-8",
+    new InlineProgress<FrontolParseProgress>(serviceProgress.Add));
+Assert(serviceProgress.Any(item => item.ProcessedLines == 1) && serviceProgress[^1].Percent == 100,
+    "Индикатор должен обновляться и для файла из служебных команд.");
+
+var utf16BePath = Path.Combine(Path.GetTempPath(), $"frontol-utf16be-{Guid.NewGuid():N}.txt");
+try
+{
+    File.WriteAllText(utf16BePath, "##@@&&\r\n#\r\n$$$DELETEALLWARES\r\n", new UnicodeEncoding(true, true, true));
+    var utf16BeDocument = new FrontolFileParser().ParseFile(utf16BePath);
+    Assert(utf16BeDocument.EncodingName == "UTF-16 BE" && utf16BeDocument.Records.Count == 3,
+        "UTF-16 BE с BOM должен распознаваться без потери строк.");
+}
+finally
+{
+    File.Delete(utf16BePath);
+}
 
 var catalogFixturePath = Path.Combine(Path.GetDirectoryName(Path.GetFullPath(args[0]))!, "catalog-commands-sample.txt");
 Assert(File.Exists(catalogFixturePath), $"Не найден тестовый файл команд: {catalogFixturePath}");

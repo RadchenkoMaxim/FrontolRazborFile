@@ -20,6 +20,17 @@ public sealed class FrontolFileParser
 
         progress?.Report(new FrontolParseProgress(0, 0, "Чтение файла"));
         var bytes = File.ReadAllBytes(filePath);
+        return ParseBytes(filePath, bytes, progress);
+    }
+
+    public AnalysisDocument ParseBytes(
+        string filePath,
+        byte[] bytes,
+        IProgress<FrontolParseProgress>? progress = null)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(filePath);
+        ArgumentNullException.ThrowIfNull(bytes);
+
         var (text, encodingName) = Decode(bytes);
         var lines = SplitLines(text);
         return ParseLines(filePath, lines, encodingName, progress);
@@ -48,12 +59,14 @@ public sealed class FrontolFileParser
             if (trimmed.Length == 0)
             {
                 records.Add(ServiceRecord(lineNumber, FrontolRecordKind.Empty, rawLine, "Пустая строка", "Разделитель или пустая строка"));
+                ReportProgress(progress, index, lines.Count);
                 continue;
             }
 
             if (trimmed.StartsWith("//", StringComparison.Ordinal))
             {
                 records.Add(ServiceRecord(lineNumber, FrontolRecordKind.Comment, rawLine, "Комментарий", trimmed));
+                ReportProgress(progress, index, lines.Count);
                 continue;
             }
 
@@ -65,6 +78,7 @@ public sealed class FrontolFileParser
                     rawLine,
                     trimmed == "##@@&&" ? "Сигнатура Frontol" : "Строка заголовка",
                     trimmed == "##@@&&" ? "Начало файла загрузки" : "Служебная строка заголовка"));
+                ReportProgress(progress, index, lines.Count);
                 continue;
             }
 
@@ -72,16 +86,14 @@ public sealed class FrontolFileParser
             {
                 currentCommand = FrontolCommandCatalog.Normalize(trimmed);
                 records.Add(CommandRecord(lineNumber, rawLine, currentCommand));
+                ReportProgress(progress, index, lines.Count);
                 continue;
             }
 
             currentCommand ??= "ADDQUANTITY";
             records.Add(DataRecord(lineNumber, rawLine, currentCommand));
 
-            if (index % 100 == 0 || index == lines.Count - 1)
-            {
-                progress?.Report(new FrontolParseProgress(index + 1, lines.Count, "Разбор строк"));
-            }
+            ReportProgress(progress, index, lines.Count);
         }
 
         progress?.Report(new FrontolParseProgress(lines.Count, lines.Count, "Разбор завершен"));
@@ -92,6 +104,14 @@ public sealed class FrontolFileParser
             EncodingName = encodingName,
             Records = records
         };
+    }
+
+    private static void ReportProgress(IProgress<FrontolParseProgress>? progress, int index, int total)
+    {
+        if (index % 100 == 0 || index == total - 1)
+        {
+            progress?.Report(new FrontolParseProgress(index + 1, total, "Разбор строк"));
+        }
     }
 
     private static ParsedRecord ServiceRecord(
@@ -141,20 +161,6 @@ public sealed class FrontolFileParser
         var values = rawLine.Split(';', StringSplitOptions.None);
         if (!FrontolCommandCatalog.TryGet(commandName, out var definition))
         {
-            var genericFields = values.Select((value, index) => new AnalyzedField
-            {
-                Number = index + 1,
-                Name = $"Поле №{index + 1}",
-                RawValue = value,
-                WasProvided = true,
-                Interpretation = string.IsNullOrEmpty(value) ? "Пустое значение" : "Значение передано",
-                Required = false,
-                DataType = "Неизвестно",
-                Purpose = "Описание отсутствует во встроенном справочнике",
-                Severity = IssueSeverity.Warning,
-                Diagnostic = "Сверьте поле с разделом команды в руководстве интегратора."
-            }).ToArray();
-
             return new ParsedRecord
             {
                 LineNumber = lineNumber,
@@ -163,15 +169,18 @@ public sealed class FrontolFileParser
                 CommandName = commandName,
                 Title = $"Данные · $$$${commandName}".Replace("$$$$", "$$$"),
                 Summary = $"Полей: {values.Length}",
-                Fields = genericFields,
+                RawValues = values,
+                FieldCount = values.Length,
+                FieldSeverity = IssueSeverity.Warning,
+                FieldFactory = () => BuildGenericFields(values),
                 Issues = [new AnalysisIssue(IssueSeverity.Warning, "Команда не распознана; поля только пронумерованы.")]
             };
         }
 
         var resolvedDefinitions = definition.ResolveFields(values);
         var fieldCount = Math.Max(values.Length, resolvedDefinitions.Count);
-        var fields = new List<AnalyzedField>(fieldCount);
         var issues = new List<AnalysisIssue>();
+        var fieldSeverity = IssueSeverity.None;
 
         for (var index = 0; index < fieldCount; index++)
         {
@@ -186,19 +195,7 @@ public sealed class FrontolFileParser
                 var extraDiagnostic = trailingEmpty
                     ? "Дополнительный пустой сегмент появился из-за завершающей точки с запятой."
                     : "У команды нет поля с таким номером.";
-                fields.Add(new AnalyzedField
-                {
-                    Number = number,
-                    Name = trailingEmpty ? "Завершающий пустой сегмент" : "Лишнее поле",
-                    RawValue = rawValue,
-                    WasProvided = true,
-                    Interpretation = trailingEmpty ? "Пустое значение после последней ;" : "Не предусмотрено форматом команды",
-                    Required = false,
-                    DataType = "—",
-                    Purpose = "За пределами формата команды",
-                    Severity = extraSeverity,
-                    Diagnostic = extraDiagnostic
-                });
+                fieldSeverity = MaxSeverity(fieldSeverity, extraSeverity);
                 issues.Add(new AnalysisIssue(extraSeverity, $"Поле {number}: {extraDiagnostic}"));
                 continue;
             }
@@ -207,22 +204,9 @@ public sealed class FrontolFileParser
             var (severity, diagnostic) = Validate(fieldDefinition, rawValue);
             if (severity != IssueSeverity.None)
             {
+                fieldSeverity = MaxSeverity(fieldSeverity, severity);
                 issues.Add(new AnalysisIssue(severity, $"Поле {number} «{fieldDefinition.Name}»: {diagnostic}"));
             }
-
-            fields.Add(new AnalyzedField
-            {
-                Number = number,
-                Name = fieldDefinition.Name,
-                RawValue = rawValue,
-                WasProvided = wasProvided,
-                Interpretation = Interpret(fieldDefinition, rawValue),
-                Required = fieldDefinition.Required,
-                DataType = fieldDefinition.DataType,
-                Purpose = fieldDefinition.Purpose,
-                Severity = severity,
-                Diagnostic = diagnostic
-            });
         }
 
         return new ParsedRecord
@@ -234,10 +218,81 @@ public sealed class FrontolFileParser
             Definition = definition,
             Title = $"Данные · $$${definition.Name}",
             Summary = BuildSummary(definition, values, resolvedDefinitions.Count),
-            Fields = fields,
+            RawValues = values,
+            FieldCount = fieldCount,
+            FieldSeverity = fieldSeverity,
+            FieldFactory = () => BuildKnownFields(values, resolvedDefinitions),
             Issues = issues
         };
     }
+
+    private static IReadOnlyList<AnalyzedField> BuildGenericFields(IReadOnlyList<string> values) =>
+        values.Select((value, index) => new AnalyzedField
+        {
+            Number = index + 1,
+            Name = $"Поле №{index + 1}",
+            RawValue = value,
+            WasProvided = true,
+            Interpretation = string.IsNullOrEmpty(value) ? "Пустое значение" : "Значение передано",
+            Required = false,
+            DataType = "Неизвестно",
+            Purpose = "Описание отсутствует во встроенном справочнике",
+            Severity = IssueSeverity.Warning,
+            Diagnostic = "Сверьте поле с разделом команды в руководстве интегратора."
+        }).ToArray();
+
+    private static IReadOnlyList<AnalyzedField> BuildKnownFields(
+        IReadOnlyList<string> values,
+        IReadOnlyList<FieldDefinition> definitions)
+    {
+        var fieldCount = Math.Max(values.Count, definitions.Count);
+        var fields = new AnalyzedField[fieldCount];
+        for (var index = 0; index < fieldCount; index++)
+        {
+            var number = index + 1;
+            var wasProvided = index < values.Count;
+            var rawValue = wasProvided ? values[index] : string.Empty;
+            if (index >= definitions.Count)
+            {
+                var trailingEmpty = rawValue.Length == 0 && index == values.Count - 1;
+                fields[index] = new AnalyzedField
+                {
+                    Number = number,
+                    Name = trailingEmpty ? "Завершающий пустой сегмент" : "Лишнее поле",
+                    RawValue = rawValue,
+                    WasProvided = true,
+                    Interpretation = trailingEmpty ? "Пустое значение после последней ;" : "Не предусмотрено форматом команды",
+                    Required = false,
+                    DataType = "—",
+                    Purpose = "За пределами формата команды",
+                    Severity = trailingEmpty ? IssueSeverity.Info : IssueSeverity.Error,
+                    Diagnostic = trailingEmpty
+                        ? "Дополнительный пустой сегмент появился из-за завершающей точки с запятой."
+                        : "У команды нет поля с таким номером."
+                };
+                continue;
+            }
+
+            var definition = definitions[index];
+            var (severity, diagnostic) = Validate(definition, rawValue);
+            fields[index] = new AnalyzedField
+            {
+                Number = number,
+                Name = definition.Name,
+                RawValue = rawValue,
+                WasProvided = wasProvided,
+                Interpretation = Interpret(definition, rawValue),
+                Required = definition.Required,
+                DataType = definition.DataType,
+                Purpose = definition.Purpose,
+                Severity = severity,
+                Diagnostic = diagnostic
+            };
+        }
+        return fields;
+    }
+
+    private static IssueSeverity MaxSeverity(IssueSeverity left, IssueSeverity right) => left > right ? left : right;
 
     private static string BuildSummary(CommandDefinition definition, IReadOnlyList<string> values, int resolvedFieldCount)
     {
@@ -342,6 +397,11 @@ public sealed class FrontolFileParser
         if (bytes.AsSpan().StartsWith(Encoding.Unicode.GetPreamble()))
         {
             return (Encoding.Unicode.GetString(bytes.AsSpan(Encoding.Unicode.GetPreamble().Length)), "UTF-16 LE");
+        }
+
+        if (bytes.AsSpan().StartsWith(Encoding.BigEndianUnicode.GetPreamble()))
+        {
+            return (Encoding.BigEndianUnicode.GetString(bytes.AsSpan(Encoding.BigEndianUnicode.GetPreamble().Length)), "UTF-16 BE");
         }
 
         try

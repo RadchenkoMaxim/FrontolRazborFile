@@ -3,9 +3,10 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         Title="Команды и поля загрузки Frontol 6"
         Icon="Assets/app.ico"
-        Width="1180" Height="720" MinWidth="900" MinHeight="560"
+        Width="1180" Height="720" MinWidth="560" MinHeight="340"
         WindowStartupLocation="CenterOwner"
-        Background="#F0F0F0">
+        Background="#F0F0F0"
+        UseLayoutRounding="True">
     <Grid Margin="8">
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto" />
@@ -14,17 +15,22 @@
         </Grid.RowDefinitions>
 
         <Border Padding="8" Background="White" BorderBrush="#CFCFCF" BorderThickness="1">
-            <DockPanel>
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="*" />
+                </Grid.ColumnDefinitions>
                 <TextBlock Margin="0,0,8,0" VerticalAlignment="Center" FontWeight="SemiBold" Text="Поиск команды:" />
-                <TextBox x:Name="SearchBox" Width="330" HorizontalAlignment="Left" TextChanged="SearchBox_TextChanged" />
-            </DockPanel>
+                <TextBox x:Name="SearchBox" Grid.Column="1" MinWidth="120" MaxWidth="330"
+                         HorizontalAlignment="Stretch" TextChanged="SearchBox_TextChanged" />
+            </Grid>
         </Border>
 
         <Grid Grid.Row="1" Margin="0,7,0,7">
             <Grid.ColumnDefinitions>
-                <ColumnDefinition Width="355" />
+                <ColumnDefinition Width="250" MinWidth="170" MaxWidth="355" />
                 <ColumnDefinition Width="6" />
-                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="*" MinWidth="240" />
             </Grid.ColumnDefinitions>
 
             <GroupBox Header="Команды загрузки" Padding="4">
@@ -37,7 +43,8 @@
                                     <RowDefinition Height="Auto" />
                                     <RowDefinition Height="Auto" />
                                 </Grid.RowDefinitions>
-                                <TextBlock FontFamily="Consolas" FontWeight="SemiBold" Text="{Binding CommandText}" />
+                                <TextBlock FontFamily="Consolas" FontWeight="SemiBold" Text="{Binding CommandText}"
+                                           TextTrimming="CharacterEllipsis" />
                                 <DockPanel Grid.Row="1" Margin="0,2,0,0">
                                     <TextBlock DockPanel.Dock="Right" Margin="8,0,0,0" Foreground="#666666" Text="{Binding FieldCountText}" />
                                     <TextBlock Foreground="#555555" Text="{Binding DisplayName}" TextTrimming="CharacterEllipsis" />
@@ -48,7 +55,8 @@
                 </ListView>
             </GroupBox>
 
-            <GridSplitter Grid.Column="1" Width="6" HorizontalAlignment="Stretch" Background="#D2D2D2" />
+            <GridSplitter Grid.Column="1" Width="6" HorizontalAlignment="Stretch" Background="#D2D2D2"
+                          ResizeBehavior="PreviousAndNext" ShowsPreview="True" />
 
             <Grid Grid.Column="2" Margin="4,0,0,0">
                 <Grid.RowDefinitions>
@@ -57,27 +65,33 @@
                 </Grid.RowDefinitions>
 
                 <Border Padding="10,7" Background="White" BorderBrush="#CFCFCF" BorderThickness="1,1,1,0">
-                    <Grid>
-                        <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="*" />
-                            <ColumnDefinition Width="Auto" />
-                        </Grid.ColumnDefinitions>
+                    <ScrollViewer MaxHeight="156" HorizontalScrollBarVisibility="Disabled"
+                                  VerticalScrollBarVisibility="Auto">
                         <StackPanel>
-                            <TextBlock FontSize="16" FontWeight="SemiBold" Text="{Binding SelectedCommand.CommandText}" />
-                            <TextBlock Margin="0,2,0,0" FontSize="13" Text="{Binding SelectedCommand.DisplayName}" />
-                            <TextBlock Margin="0,5,0,0" Foreground="#4F4F4F" Text="{Binding SelectedCommand.Description}" TextWrapping="Wrap" />
-                            <TextBlock Margin="0,3,0,0" Foreground="#666666" FontSize="11" Text="{Binding SelectedCommand.ManualReference}" />
-                        </StackPanel>
-                        <StackPanel Grid.Column="1" Margin="16,0,0,0">
-                            <TextBlock HorizontalAlignment="Right" Foreground="#555555"
-                                       FontWeight="SemiBold" Text="{Binding SelectedCommand.FieldCountText}" />
-                            <ComboBox Width="290" Margin="0,7,0,0"
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <TextBlock FontSize="16" FontWeight="SemiBold" Text="{Binding SelectedCommand.CommandText}"
+                                           TextWrapping="Wrap" />
+                                <TextBlock Grid.Column="1" Margin="12,2,0,0" HorizontalAlignment="Right"
+                                           Foreground="#555555" FontWeight="SemiBold"
+                                           Text="{Binding SelectedCommand.FieldCountText}" />
+                            </Grid>
+                            <TextBlock Margin="0,2,0,0" FontSize="13" Text="{Binding SelectedCommand.DisplayName}"
+                                       TextWrapping="Wrap" />
+                            <TextBlock Margin="0,5,0,0" Foreground="#4F4F4F" Text="{Binding SelectedCommand.Description}"
+                                       TextWrapping="Wrap" />
+                            <TextBlock Margin="0,3,0,0" Foreground="#666666" FontSize="11"
+                                       Text="{Binding SelectedCommand.ManualReference}" TextWrapping="Wrap" />
+                            <ComboBox MinWidth="160" Margin="0,7,0,0"
                                       ItemsSource="{Binding AvailableVariants}"
                                       SelectedItem="{Binding SelectedVariant}"
                                       DisplayMemberPath="DisplayText"
                                       Visibility="{Binding SelectedCommand.HasVariants, Converter={StaticResource BooleanToVisibilityConverter}}" />
                         </StackPanel>
-                    </Grid>
+                    </ScrollViewer>
                 </Border>
 
                 <Grid Grid.Row="1">
@@ -89,6 +103,8 @@
                               BorderBrush="#CFCFCF" BorderThickness="1"
                               RowHeaderWidth="0" RowHeight="29" ColumnHeaderHeight="30"
                               AlternatingRowBackground="#F8F8F8"
+                              ScrollViewer.HorizontalScrollBarVisibility="Auto"
+                              ScrollViewer.VerticalScrollBarVisibility="Auto"
                               HorizontalGridLinesBrush="#E0E0E0" VerticalGridLinesBrush="#E0E0E0">
                         <DataGrid.Columns>
                             <DataGridTextColumn Header="№" Binding="{Binding Number}" Width="45" />
@@ -99,8 +115,9 @@
                             <DataGridTextColumn Header="По умолчанию" Binding="{Binding DefaultValue}" Width="110" />
                         </DataGrid.Columns>
                     </DataGrid>
-                    <TextBlock HorizontalAlignment="Center" VerticalAlignment="Center"
-                               FontSize="16" Foreground="#666666" Text="Эта команда не требует строк данных.">
+                    <TextBlock Margin="12" HorizontalAlignment="Center" VerticalAlignment="Center"
+                               FontSize="16" Foreground="#666666" Text="Эта команда не требует строк данных."
+                               TextAlignment="Center" TextWrapping="Wrap">
                         <TextBlock.Style>
                             <Style TargetType="TextBlock">
                                 <Setter Property="Visibility" Value="Collapsed" />
@@ -116,9 +133,14 @@
             </Grid>
         </Grid>
 
-        <DockPanel Grid.Row="2">
-            <TextBlock VerticalAlignment="Center" Foreground="#555555" Text="{Binding CoverageText}" />
-            <Button DockPanel.Dock="Right" Width="95" IsDefault="True" Content="Закрыть" Click="Close_Click" />
-        </DockPanel>
+        <Grid Grid.Row="2">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="Auto" />
+            </Grid.ColumnDefinitions>
+            <TextBlock Margin="0,0,8,0" VerticalAlignment="Center" Foreground="#555555"
+                       Text="{Binding CoverageText}" TextTrimming="CharacterEllipsis" />
+            <Button Grid.Column="1" Width="95" IsDefault="True" Content="Закрыть" Click="Close_Click" />
+        </Grid>
     </Grid>
 </Window>

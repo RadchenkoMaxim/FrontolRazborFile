@@ -1,14 +1,20 @@
 using System.ComponentModel;
 using System.Runtime.CompilerServices;
+using System.Runtime.InteropServices;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Data;
+using System.Windows.Interop;
+using System.Windows.Media;
 using FrontolFileAnalyzer.Core;
 
 namespace FrontolFileAnalyzer;
 
 public partial class CommandReferenceWindow : Window, INotifyPropertyChanged
 {
+    private const uint MonitorDefaultToNearest = 0x00000002;
+    private const double WorkingAreaMargin = 24d;
+
     private string _searchText = string.Empty;
     private CommandDefinition? _selectedCommand;
     private CommandVariant? _selectedVariant;
@@ -22,6 +28,7 @@ public partial class CommandReferenceWindow : Window, INotifyPropertyChanged
         CommandsView.Filter = FilterCommand;
         SelectedCommand = FrontolCommandCatalog.All.FirstOrDefault();
         DataContext = this;
+        SourceInitialized += (_, _) => ConstrainToWorkingArea();
     }
 
     public event PropertyChangedEventHandler? PropertyChanged;
@@ -103,6 +110,73 @@ public partial class CommandReferenceWindow : Window, INotifyPropertyChanged
         OnPropertyChanged(nameof(HasDisplayedFields));
     }
 
+    private void ConstrainToWorkingArea()
+    {
+        var windowHandle = new WindowInteropHelper(this).Handle;
+        var ownerHandle = Owner is null ? IntPtr.Zero : new WindowInteropHelper(Owner).Handle;
+        var referenceHandle = ownerHandle != IntPtr.Zero ? ownerHandle : windowHandle;
+        var monitorHandle = MonitorFromWindow(referenceHandle, MonitorDefaultToNearest);
+
+        var monitorInfo = new MonitorInfo
+        {
+            Size = (uint)Marshal.SizeOf<MonitorInfo>()
+        };
+
+        if (monitorHandle != IntPtr.Zero && GetMonitorInfo(monitorHandle, ref monitorInfo))
+        {
+            var dpi = VisualTreeHelper.GetDpi(Owner ?? this);
+            ApplyWorkingAreaLimits(
+                monitorInfo.WorkArea.Width / dpi.DpiScaleX,
+                monitorInfo.WorkArea.Height / dpi.DpiScaleY);
+            return;
+        }
+
+        ApplyWorkingAreaLimits(SystemParameters.WorkArea.Width, SystemParameters.WorkArea.Height);
+    }
+
+    private void ApplyWorkingAreaLimits(double workingWidth, double workingHeight)
+    {
+        var availableWidth = Math.Max(1, Math.Floor(workingWidth - WorkingAreaMargin));
+        var availableHeight = Math.Max(1, Math.Floor(workingHeight - WorkingAreaMargin));
+        var constrainedMaxWidth = Math.Min(MaxWidth, availableWidth);
+        var constrainedMaxHeight = Math.Min(MaxHeight, availableHeight);
+
+        MinWidth = Math.Min(MinWidth, constrainedMaxWidth);
+        MinHeight = Math.Min(MinHeight, constrainedMaxHeight);
+        MaxWidth = constrainedMaxWidth;
+        MaxHeight = constrainedMaxHeight;
+        Width = Math.Min(Width, constrainedMaxWidth);
+        Height = Math.Min(Height, constrainedMaxHeight);
+    }
+
     private void OnPropertyChanged([CallerMemberName] string? propertyName = null) =>
         PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(propertyName));
+
+    [DllImport("user32.dll")]
+    private static extern IntPtr MonitorFromWindow(IntPtr windowHandle, uint flags);
+
+    [DllImport("user32.dll", EntryPoint = "GetMonitorInfoW")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool GetMonitorInfo(IntPtr monitorHandle, ref MonitorInfo monitorInfo);
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct MonitorInfo
+    {
+        public uint Size;
+        public NativeRect MonitorArea;
+        public NativeRect WorkArea;
+        public uint Flags;
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct NativeRect
+    {
+        public int Left;
+        public int Top;
+        public int Right;
+        public int Bottom;
+
+        public readonly int Width => Right - Left;
+        public readonly int Height => Bottom - Top;
+    }
 }

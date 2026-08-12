@@ -1,8 +1,10 @@
 using System.Collections.ObjectModel;
 using System.ComponentModel;
 using System.Diagnostics;
+using System.Globalization;
 using System.IO;
 using System.Runtime.CompilerServices;
+using System.Security.Cryptography;
 using System.Text;
 using System.Windows;
 using System.Windows.Controls;
@@ -11,6 +13,7 @@ using System.Windows.Data;
 using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
+using System.Windows.Threading;
 using FrontolFileAnalyzer.Core;
 using Microsoft.Win32;
 
@@ -27,7 +30,9 @@ public partial class MainWindow : Window, INotifyPropertyChanged
     private readonly List<RecordColumnState> _recordColumns = [];
     private readonly HashSet<string> _selectedMarkingCodes = new(StringComparer.OrdinalIgnoreCase);
     private readonly HashSet<int> _modifiedLineNumbers = [];
+    private readonly DispatcherTimer _searchTimer;
     private List<string> _workingLines = [];
+    private List<string> _originalLines = [];
     private ObservableCollection<ParsedRecord> _records = [];
     private ICollectionView _recordsView = null!;
     private string _filePath = "Файл не выбран";
@@ -54,10 +59,19 @@ public partial class MainWindow : Window, INotifyPropertyChanged
     private bool _adjustingRecordColumns;
     private Encoding _sourceEncoding = new UTF8Encoding(false);
     private string _markingFilterLabel = "Все виды";
+    private string? _loadedFileHash;
     private GridLength _recordsPaneWidth = new(655);
+    private bool _recordsPaneCollapsedByLayout;
 
     public MainWindow()
     {
+        _searchTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(220) };
+        _searchTimer.Tick += (_, _) =>
+        {
+            _searchTimer.Stop();
+            RecordsView.Refresh();
+            SelectFirstVisibleRecord();
+        };
         _settings = _settingsStore.Load();
         _showEmptyFields = _settings.ShowEmptyFields;
         ReplaceRecordsView(_records);
@@ -116,11 +130,14 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         {
             if (SetField(ref _filePath, value))
             {
+                OnPropertyChanged(nameof(FileDisplayName));
                 OnPropertyChanged(nameof(HasCurrentFile));
                 OnPropertyChanged(nameof(CanOpenCurrentFile));
             }
         }
     }
+
+    public string FileDisplayName => Path.GetFileName(FilePath);
 
     public string EncodingLabel
     {
@@ -182,6 +199,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
                 OnPropertyChanged(nameof(CanConfigureFields));
                 OnPropertyChanged(nameof(CanEditSelectedField));
                 OnPropertyChanged(nameof(CanSaveFile));
+                OnPropertyChanged(nameof(CanSaveChanges));
             }
         }
     }
@@ -236,14 +254,17 @@ public partial class MainWindow : Window, INotifyPropertyChanged
     public bool CanConfigureFields => !IsLoading && SelectedRecord?.Fields.Count > 0;
     public bool CanEditSelectedField => !IsLoading && SelectedRecord?.Kind == FrontolRecordKind.Data && SelectedField is not null;
     public bool CanSaveFile => !IsLoading && _workingLines.Count > 0;
+    public bool CanSaveChanges => CanSaveFile && _isDirty;
 
     private async void Window_Loaded(object sender, RoutedEventArgs e)
     {
         var arguments = Environment.GetCommandLineArgs().Skip(1).ToArray();
+        ApplyRequestedWindowSize(this, arguments, "--window-size");
         var aboutScreenshotIndex = Array.FindIndex(arguments, argument => argument.Equals("--screenshot-about", StringComparison.OrdinalIgnoreCase));
         if (aboutScreenshotIndex >= 0 && arguments.Length > aboutScreenshotIndex + 1)
         {
             var window = new AboutWindow { Owner = this };
+            ApplyRequestedWindowSize(window, arguments, "--dialog-size");
             window.Show();
             await Dispatcher.InvokeAsync(window.UpdateLayout, System.Windows.Threading.DispatcherPriority.ApplicationIdle);
             SaveWindowScreenshot(window, arguments[aboutScreenshotIndex + 1]);
@@ -256,6 +277,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         if (markingScreenshotIndex >= 0 && arguments.Length > markingScreenshotIndex + 1)
         {
             var window = new MarkingCodesWindow { Owner = this };
+            ApplyRequestedWindowSize(window, arguments, "--dialog-size");
             window.Show();
             await Dispatcher.InvokeAsync(window.UpdateLayout, System.Windows.Threading.DispatcherPriority.ApplicationIdle);
             SaveWindowScreenshot(window, arguments[markingScreenshotIndex + 1]);
@@ -268,6 +290,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         if (commandsScreenshotIndex >= 0 && arguments.Length > commandsScreenshotIndex + 1)
         {
             var window = new CommandReferenceWindow { Owner = this };
+            ApplyRequestedWindowSize(window, arguments, "--dialog-size");
             window.Show();
             await Dispatcher.InvokeAsync(window.UpdateLayout, System.Windows.Threading.DispatcherPriority.ApplicationIdle);
             SaveWindowScreenshot(window, arguments[commandsScreenshotIndex + 1]);
@@ -284,6 +307,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
             {
                 var commandName = SelectedRecord.CommandName ?? "UNKNOWN";
                 var window = new FieldVisibilityWindow(commandName, SelectedRecord.Fields, GetHiddenFields(commandName)) { Owner = this };
+                ApplyRequestedWindowSize(window, arguments, "--dialog-size");
                 window.Show();
                 await Dispatcher.InvokeAsync(window.UpdateLayout, System.Windows.Threading.DispatcherPriority.ApplicationIdle);
                 SaveWindowScreenshot(window, arguments[fieldsScreenshotIndex + 1]);
@@ -299,6 +323,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         {
             await LoadFileAsync(arguments[statisticsScreenshotIndex + 2]);
             var window = new StatisticsWindow(_records, _modifiedLineNumbers.Count) { Owner = this };
+            ApplyRequestedWindowSize(window, arguments, "--dialog-size");
             window.Show();
             await Dispatcher.InvokeAsync(window.UpdateLayout, System.Windows.Threading.DispatcherPriority.ApplicationIdle);
             SaveWindowScreenshot(window, arguments[statisticsScreenshotIndex + 1]);
@@ -314,9 +339,54 @@ public partial class MainWindow : Window, INotifyPropertyChanged
             var options = _markingFilters.Where(option => option.Code is not null)
                 .Select(option => new MarkingMultiFilterOption(option.Code!, option.Name, option.Count));
             var window = new MarkingMultiFilterWindow(options, _selectedMarkingCodes) { Owner = this };
+            ApplyRequestedWindowSize(window, arguments, "--dialog-size");
             window.Show();
             await Dispatcher.InvokeAsync(window.UpdateLayout, System.Windows.Threading.DispatcherPriority.ApplicationIdle);
             SaveWindowScreenshot(window, arguments[multiFilterScreenshotIndex + 1]);
+            window.Close();
+            Close();
+            return;
+        }
+
+        var fieldEditorScreenshotIndex = Array.FindIndex(arguments, argument => argument.Equals("--screenshot-field-editor", StringComparison.OrdinalIgnoreCase));
+        if (fieldEditorScreenshotIndex >= 0 && arguments.Length > fieldEditorScreenshotIndex + 3 &&
+            int.TryParse(arguments[fieldEditorScreenshotIndex + 3], out var requestedFieldNumber))
+        {
+            await LoadFileAsync(arguments[fieldEditorScreenshotIndex + 2]);
+            var record = _records.FirstOrDefault(item => item.IsProductRecord);
+            var field = record?.Fields.FirstOrDefault(item => item.Number == requestedFieldNumber);
+            if (record is not null && field is not null)
+            {
+                var values = record.RawText.Split(';', StringSplitOptions.None);
+                var definition = record.Definition?.ResolveFields(values).FirstOrDefault(item => item.Number == field.Number);
+                var window = new FieldEditWindow(record.LineNumber, field, definition) { Owner = this };
+                ApplyRequestedWindowSize(window, arguments, "--dialog-size");
+                window.Show();
+                await Dispatcher.InvokeAsync(window.UpdateLayout, DispatcherPriority.ApplicationIdle);
+                SaveWindowScreenshot(window, arguments[fieldEditorScreenshotIndex + 1]);
+                window.Close();
+            }
+            Close();
+            return;
+        }
+
+        var bulkEditorScreenshotIndex = Array.FindIndex(arguments, argument => argument.Equals("--screenshot-bulk-marking", StringComparison.OrdinalIgnoreCase));
+        if (bulkEditorScreenshotIndex >= 0 && arguments.Length > bulkEditorScreenshotIndex + 2)
+        {
+            await LoadFileAsync(arguments[bulkEditorScreenshotIndex + 2]);
+            var products = _records.Where(record => record.IsProductRecord).ToArray();
+            var sources = products
+                .GroupBy(record => record.ProductTypeCode ?? "0", StringComparer.OrdinalIgnoreCase)
+                .Select(group => new BulkMarkingSourceOption(
+                    group.Key,
+                    FrontolReferenceCatalog.ProductTypeValues.TryGetValue(group.Key, out var name) ? name : $"Неизвестный код {group.Key}",
+                    group.Count()));
+            var targets = FrontolReferenceCatalog.ProductTypeValues.Select(pair => new BulkMarkingTargetOption(pair.Key, pair.Value));
+            var window = new BulkMarkingEditWindow(sources, targets) { Owner = this };
+            ApplyRequestedWindowSize(window, arguments, "--dialog-size");
+            window.Show();
+            await Dispatcher.InvokeAsync(window.UpdateLayout, DispatcherPriority.ApplicationIdle);
+            SaveWindowScreenshot(window, arguments[bulkEditorScreenshotIndex + 1]);
             window.Close();
             Close();
             return;
@@ -346,6 +416,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
             if (searchIndex >= 0 && arguments.Length > searchIndex + 1)
             {
                 SearchBox.Text = arguments[searchIndex + 1];
+                ApplySearchFilterNow();
             }
             if (arguments.Any(argument => argument.Equals("--collapse-records", StringComparison.OrdinalIgnoreCase)))
             {
@@ -387,7 +458,18 @@ public partial class MainWindow : Window, INotifyPropertyChanged
 
     private async void SaveFile_Click(object sender, RoutedEventArgs e)
     {
-        if (CanSaveFile && HasCurrentFile)
+        if (!CanSaveFile)
+        {
+            return;
+        }
+
+        if (!CanSaveChanges)
+        {
+            StatusMessage = "Несохранённых изменений нет";
+            return;
+        }
+
+        if (HasCurrentFile)
         {
             await SaveWorkingFileAsync(FilePath);
             return;
@@ -423,14 +505,35 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         {
             IsLoading = true;
             StatusMessage = "Сохранение файла…";
-            var text = string.Join(_newLine, _workingLines) + (_hasTrailingNewLine ? _newLine : string.Empty);
             var fullTargetPath = Path.GetFullPath(targetPath);
+            if (File.Exists(fullTargetPath) &&
+                string.Equals(fullTargetPath, Path.GetFullPath(FilePath), StringComparison.OrdinalIgnoreCase) &&
+                _loadedFileHash is not null)
+            {
+                var currentHash = await Task.Run(() => ComputeFileHash(fullTargetPath));
+                if (!string.Equals(currentHash, _loadedFileHash, StringComparison.Ordinal))
+                {
+                    IsLoading = false;
+                    var overwrite = MessageBox.Show(this,
+                        "Исходный файл был изменён другой программой после его открытия.\n\nПродолжить и заменить файл? Текущая внешняя версия будет сохранена в .bak.",
+                        "Файл изменён извне", MessageBoxButton.YesNo, MessageBoxImage.Warning);
+                    if (overwrite != MessageBoxResult.Yes)
+                    {
+                        StatusMessage = "Сохранение отменено: файл изменён извне";
+                        return;
+                    }
+                    IsLoading = true;
+                }
+            }
+
+            var text = string.Join(_newLine, _workingLines) + (_hasTrailingNewLine ? _newLine : string.Empty);
             var targetDirectory = Path.GetDirectoryName(fullTargetPath)!;
             Directory.CreateDirectory(targetDirectory);
             var tempPath = Path.Combine(targetDirectory, $".{Path.GetFileName(fullTargetPath)}.{Guid.NewGuid():N}.tmp");
             var backupPath = fullTargetPath + ".bak";
 
             await Task.Run(() => File.WriteAllText(tempPath, text, _sourceEncoding));
+            var writtenHash = await Task.Run(() => ComputeFileHash(tempPath));
             try
             {
                 if (File.Exists(fullTargetPath))
@@ -453,8 +556,10 @@ public partial class MainWindow : Window, INotifyPropertyChanged
             }
 
             FilePath = fullTargetPath;
+            _loadedFileHash = writtenHash;
             AddRecentFile(fullTargetPath);
             _modifiedLineNumbers.Clear();
+            _originalLines = _workingLines.ToList();
             foreach (var record in _records)
             {
                 record.IsModified = false;
@@ -617,7 +722,8 @@ public partial class MainWindow : Window, INotifyPropertyChanged
             .Select(column => _recordColumns.First(state => ReferenceEquals(state.Column, column)).Key)
             .ToHashSet(StringComparer.OrdinalIgnoreCase);
         var dialog = new RecordColumnsWindow(_recordColumns.Select(state =>
-            new RecordColumnOption(state.Key, state.Header, visibleKeys.Contains(state.Key)))) { Owner = this };
+            new RecordColumnOption(state.Key, state.Header, visibleKeys.Contains(state.Key))))
+        { Owner = this };
         if (dialog.ShowDialog() != true)
         {
             return;
@@ -746,7 +852,14 @@ public partial class MainWindow : Window, INotifyPropertyChanged
             e.Handled = true;
         }
 
-        if (e.Key == Key.M && Keyboard.Modifiers.HasFlag(ModifierKeys.Control))
+        if (e.Key == Key.M &&
+            Keyboard.Modifiers.HasFlag(ModifierKeys.Control) &&
+            Keyboard.Modifiers.HasFlag(ModifierKeys.Shift))
+        {
+            BulkEditMarking_Click(sender, new RoutedEventArgs());
+            e.Handled = true;
+        }
+        else if (e.Key == Key.M && Keyboard.Modifiers.HasFlag(ModifierKeys.Control))
         {
             ToggleRecordsPane_Click(sender, new RoutedEventArgs());
             e.Handled = true;
@@ -780,6 +893,13 @@ public partial class MainWindow : Window, INotifyPropertyChanged
 
     private void Window_Closing(object? sender, CancelEventArgs e)
     {
+        if (IsLoading)
+        {
+            e.Cancel = true;
+            StatusMessage = "Дождитесь завершения текущей операции";
+            return;
+        }
+
         SaveInterfaceSettings();
         if (!_isDirty)
         {
@@ -823,7 +943,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
             _recordsPaneWidth = RecordsColumn.Width;
         }
 
-        RecordsColumn.MinWidth = isVisible ? 360 : 0;
+        RecordsColumn.MinWidth = isVisible ? 300 : 0;
         RecordsColumn.Width = isVisible
             ? (_recordsPaneWidth.Value > 0 ? _recordsPaneWidth : new GridLength(655))
             : new GridLength(0);
@@ -832,6 +952,32 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         ToggleRecordsPaneButton.ToolTip = isVisible
             ? "Скрыть список строк (Ctrl+M)"
             : "Показать список строк (Ctrl+M)";
+    }
+
+    private void Window_SizeChanged(object sender, SizeChangedEventArgs e)
+    {
+        const double collapseBreakpoint = 1120;
+        const double restoreBreakpoint = 1280;
+        if (e.NewSize.Width < collapseBreakpoint && RecordsPanel.Visibility == Visibility.Visible)
+        {
+            _recordsPaneCollapsedByLayout = true;
+            SetRecordsPaneVisibility(false);
+        }
+        else if (e.NewSize.Width > restoreBreakpoint && _recordsPaneCollapsedByLayout && RecordsPanel.Visibility != Visibility.Visible)
+        {
+            _recordsPaneCollapsedByLayout = false;
+            SetRecordsPaneVisibility(true);
+        }
+
+        var showSecondaryDetails = e.NewSize.Height >= 560;
+        if (FullCellTextPanel is not null)
+        {
+            FullCellTextPanel.Visibility = showSecondaryDetails ? Visibility.Visible : Visibility.Collapsed;
+        }
+        if (SelectedFieldDetailsPanel is not null)
+        {
+            SelectedFieldDetailsPanel.Visibility = showSecondaryDetails ? Visibility.Visible : Visibility.Collapsed;
+        }
     }
 
     private void InitializeRecordColumns()
@@ -931,6 +1077,13 @@ public partial class MainWindow : Window, INotifyPropertyChanged
     {
         _searchText = (sender as TextBox)?.Text?.Trim() ?? string.Empty;
         OnPropertyChanged(nameof(SearchTextQuery));
+        _searchTimer.Stop();
+        _searchTimer.Start();
+    }
+
+    private void ApplySearchFilterNow()
+    {
+        _searchTimer.Stop();
         RecordsView.Refresh();
         SelectFirstVisibleRecord();
     }
@@ -1059,16 +1212,143 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         };
     }
 
-    private async void EditField_Click(object sender, RoutedEventArgs e)
+    private void FieldsGrid_RightClick(object sender, MouseButtonEventArgs e)
     {
-        if (SelectedRecord is not { Kind: FrontolRecordKind.Data } record || SelectedField is not { } field)
+        var cell = FindVisualParent<DataGridCell>(e.OriginalSource as DependencyObject);
+        if (cell?.DataContext is not AnalyzedField field)
         {
             return;
         }
 
-        var dialog = new TextEditWindow("Изменить значение поля",
-            $"Строка {record.LineNumber}, поле {field.Number} «{field.Name}». Символ ';' является разделителем полей.",
-            field.RawValue) { Owner = this };
+        SelectedField = field;
+        cell.Focus();
+        FieldsGrid.SelectedCells.Clear();
+        FieldsGrid.SelectedCells.Add(new DataGridCellInfo(field, cell.Column));
+    }
+
+    private static T? FindVisualParent<T>(DependencyObject? child) where T : DependencyObject
+    {
+        while (child is not null)
+        {
+            if (child is T match)
+            {
+                return match;
+            }
+            child = VisualTreeHelper.GetParent(child);
+        }
+        return null;
+    }
+
+    private async void BulkEditMarking_Click(object sender, RoutedEventArgs e)
+    {
+        if (IsLoading || !HasLoadedRecords)
+        {
+            return;
+        }
+
+        var products = _records.Where(record => record.IsProductRecord).ToArray();
+        var sources = products
+            .GroupBy(record => record.ProductTypeCode ?? "0", StringComparer.OrdinalIgnoreCase)
+            .Select(group =>
+            {
+                var name = FrontolReferenceCatalog.ProductTypeValues.TryGetValue(group.Key, out var known)
+                    ? known
+                    : $"Неизвестный код {group.Key}";
+                return new BulkMarkingSourceOption(group.Key, name, group.Count());
+            });
+        var targets = FrontolReferenceCatalog.ProductTypeValues
+            .Select(pair => new BulkMarkingTargetOption(pair.Key, pair.Value));
+        var dialog = new BulkMarkingEditWindow(sources, targets) { Owner = this };
+        if (dialog.ShowDialog() != true)
+        {
+            return;
+        }
+
+        var targetName = FrontolReferenceCatalog.ProductTypeValues.TryGetValue(dialog.TargetCode, out var knownTarget)
+            ? knownTarget
+            : "произвольное значение";
+        var confirm = MessageBox.Show(this,
+            $"Изменить поле 55 «Тип номенклатуры / маркировки» у {dialog.AffectedCount:N0} товаров?\n\nНовое значение: {dialog.TargetCode} — {targetName}\n\nИзменения можно проверить до сохранения. При сохранении поверх исходного файла будет создана .bak-копия.",
+            "Подтверждение массовой замены", MessageBoxButton.YesNo, MessageBoxImage.Warning);
+        if (confirm != MessageBoxResult.Yes)
+        {
+            return;
+        }
+
+        await ApplyBulkMarkingEditAsync(dialog.SourceCodes, dialog.TargetCode);
+    }
+
+    private async Task ApplyBulkMarkingEditAsync(HashSet<string> sourceCodes, string targetCode)
+    {
+        var matchingLines = _records
+            .Where(record => record.IsProductRecord && sourceCodes.Contains(record.ProductTypeCode ?? "0"))
+            .Select(record => record.LineNumber)
+            .Distinct()
+            .ToArray();
+        if (matchingLines.Length == 0)
+        {
+            StatusMessage = "Нет товаров для массового изменения";
+            return;
+        }
+
+        try
+        {
+            IsLoading = true;
+            LoadProgressIsIndeterminate = true;
+            LoadProgressText = $"Изменение {matchingLines.Length:N0} товаров";
+            var updated = _workingLines.ToArray();
+            foreach (var lineNumber in matchingLines)
+            {
+                var parts = updated[lineNumber - 1].Split(';', StringSplitOptions.None).ToList();
+                while (parts.Count < 55)
+                {
+                    parts.Add(string.Empty);
+                }
+                parts[54] = targetCode;
+                updated[lineNumber - 1] = string.Join(';', parts);
+            }
+
+            var document = await Task.Run(() => _parser.ParseLines(FilePath, updated, _encodingName));
+            _workingLines = updated.ToList();
+            foreach (var lineNumber in matchingLines)
+            {
+                if (lineNumber <= _originalLines.Count && string.Equals(updated[lineNumber - 1], _originalLines[lineNumber - 1], StringComparison.Ordinal))
+                {
+                    _modifiedLineNumbers.Remove(lineNumber);
+                }
+                else
+                {
+                    _modifiedLineNumbers.Add(lineNumber);
+                }
+            }
+            var selectedLine = SelectedRecord?.LineNumber ?? matchingLines[0];
+            ApplyParsedDocument(document, selectedLine, 55);
+            SetDirty(_modifiedLineNumbers.Count > 0);
+            StatusMessage = $"Вид маркировки изменён у {matchingLines.Length:N0} товаров. Файл пока не сохранён";
+        }
+        catch (Exception exception)
+        {
+            MessageBox.Show(this, exception.Message, "Ошибка массовой замены", MessageBoxButton.OK, MessageBoxImage.Error);
+        }
+        finally
+        {
+            IsLoading = false;
+            LoadProgressIsIndeterminate = false;
+            LoadProgressText = string.Empty;
+        }
+    }
+
+    private async void EditField_Click(object sender, RoutedEventArgs e)
+    {
+        if (IsLoading || SelectedRecord is not { Kind: FrontolRecordKind.Data } record || SelectedField is not { } field)
+        {
+            return;
+        }
+
+        var rawValues = record.RawText.Split(';', StringSplitOptions.None);
+        var definition = record.Definition?.ResolveFields(rawValues)
+            .FirstOrDefault(item => item.Number == field.Number);
+        var dialog = new FieldEditWindow(record.LineNumber, field, definition) { Owner = this };
         if (dialog.ShowDialog() != true || dialog.Value == field.RawValue)
         {
             return;
@@ -1092,13 +1372,14 @@ public partial class MainWindow : Window, INotifyPropertyChanged
 
     private async void EditRawLine_Click(object sender, RoutedEventArgs e)
     {
-        if (SelectedRecord is not { } record)
+        if (IsLoading || SelectedRecord is not { } record)
         {
             return;
         }
 
-        var dialog = new TextEditWindow("Изменить исходную строку",
-            $"Физическая строка {record.LineNumber}. Поля данных разделяются точкой с запятой.", record.RawText) { Owner = this };
+        var dialog = new TextEditWindow("Расширенное редактирование строки",
+            $"Физическая строка {record.LineNumber:N0}. Точка с запятой разделяет поля; изменение структуры может повлиять на разбор всей команды.", record.RawText)
+        { Owner = this };
         if (dialog.ShowDialog() != true || dialog.Value == record.RawText)
         {
             return;
@@ -1130,14 +1411,16 @@ public partial class MainWindow : Window, INotifyPropertyChanged
             {
                 var snapshot = _workingLines.ToArray();
                 var document = await Task.Run(() => _parser.ParseLines(FilePath, snapshot, _encodingName));
-                ApplyParsedDocument(document, lineNumber, fieldNumber);
-                _modifiedLineNumbers.Add(lineNumber);
-                if (SelectedRecord is not null)
+                if (lineNumber <= _originalLines.Count && string.Equals(newRawLine, _originalLines[lineNumber - 1], StringComparison.Ordinal))
                 {
-                    SelectedRecord.IsModified = true;
-                    RecordsView.Refresh();
+                    _modifiedLineNumbers.Remove(lineNumber);
                 }
-                SetDirty(true);
+                else
+                {
+                    _modifiedLineNumbers.Add(lineNumber);
+                }
+                ApplyParsedDocument(document, lineNumber, fieldNumber);
+                SetDirty(_modifiedLineNumbers.Count > 0);
                 StatusMessage = $"Строка {lineNumber:N0} изменена и повторно проверена";
             }
             catch
@@ -1194,15 +1477,16 @@ public partial class MainWindow : Window, INotifyPropertyChanged
                     : $"{value.Stage}: {value.ProcessedLines:N0} из {value.TotalLines:N0} ({value.Percent}%)";
             });
 
-            var document = await Task.Run(() => _parser.ParseFile(path, progress));
-
             var sourceBytes = await File.ReadAllBytesAsync(path);
+            var document = await Task.Run(() => _parser.ParseBytes(path, sourceBytes, progress));
+            _loadedFileHash = Convert.ToHexString(SHA256.HashData(sourceBytes));
             _encodingName = document.EncodingName;
             _sourceEncoding = EncodingFor(document.EncodingName);
             var sourceText = DecodeForLayout(sourceBytes, _sourceEncoding);
             _newLine = DetectNewLine(sourceText);
             _hasTrailingNewLine = sourceText.EndsWith('\n') || sourceText.EndsWith('\r');
             _workingLines = document.Records.Select(record => record.RawText).ToList();
+            _originalLines = _workingLines.ToList();
             _modifiedLineNumbers.Clear();
 
             LoadProgressIsIndeterminate = true;
@@ -1432,7 +1716,10 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         var fullPath = Path.GetFullPath(path);
         _settings.RecentFiles.RemoveAll(item => string.Equals(item, fullPath, StringComparison.OrdinalIgnoreCase));
         _settings.RecentFiles.Insert(0, fullPath);
-        _settings.RecentFiles = _settings.RecentFiles.Where(File.Exists).Take(10).ToList();
+        _settings.RecentFiles = _settings.RecentFiles
+            .Where(item => !string.IsNullOrWhiteSpace(item))
+            .Take(10)
+            .ToList();
         RebuildRecentFilesMenu();
         _settingsStore.Save(_settings);
     }
@@ -1445,7 +1732,10 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         }
 
         RecentFilesMenu.Items.Clear();
-        var paths = _settings.RecentFiles.Where(File.Exists).Take(10).ToArray();
+        var paths = _settings.RecentFiles
+            .Where(item => !string.IsNullOrWhiteSpace(item))
+            .Take(10)
+            .ToArray();
         if (paths.Length == 0)
         {
             RecentFilesMenu.Items.Add(new MenuItem { Header = "Список пуст", IsEnabled = false });
@@ -1477,7 +1767,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
 
     private async void RecentFile_Click(object sender, RoutedEventArgs e)
     {
-        if (sender is MenuItem { Tag: string path } && ConfirmDiscardChanges() && File.Exists(path))
+        if (!IsLoading && sender is MenuItem { Tag: string path } && ConfirmDiscardChanges() && File.Exists(path))
         {
             await LoadFileAsync(path);
         }
@@ -1498,15 +1788,18 @@ public partial class MainWindow : Window, INotifyPropertyChanged
     private void SetDirty(bool value)
     {
         _isDirty = value;
-        Title = value ? "Анализатор файла обмена Frontol *" : "Анализатор файла обмена Frontol";
+        var fileName = HasCurrentFile ? Path.GetFileName(FilePath) + " — " : string.Empty;
+        Title = fileName + "Анализатор файла обмена Frontol" + (value ? " *" : string.Empty);
+        OnPropertyChanged(nameof(CanSaveChanges));
     }
 
     private static Encoding EncodingFor(string encodingName) => encodingName switch
     {
-        "UTF-8 с BOM" => new UTF8Encoding(true),
-        "UTF-16 LE" => new UnicodeEncoding(false, true),
-        "Windows-1251" => Encoding.GetEncoding(1251),
-        _ => new UTF8Encoding(false)
+        "UTF-8 с BOM" => new UTF8Encoding(true, true),
+        "UTF-16 LE" => new UnicodeEncoding(false, true, true),
+        "UTF-16 BE" => new UnicodeEncoding(true, true, true),
+        "Windows-1251" => Encoding.GetEncoding(1251, EncoderFallback.ExceptionFallback, DecoderFallback.ExceptionFallback),
+        _ => new UTF8Encoding(false, true)
     };
 
     private static string DecodeForLayout(byte[] bytes, Encoding encoding)
@@ -1527,6 +1820,12 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         return text.Contains('\n') ? "\n" : text.Contains('\r') ? "\r" : Environment.NewLine;
     }
 
+    private static string ComputeFileHash(string path)
+    {
+        using var stream = File.OpenRead(path);
+        return Convert.ToHexString(SHA256.HashData(stream));
+    }
+
     private static string Csv(string value) => $"\"{(value ?? string.Empty).Replace("\"", "\"\"", StringComparison.Ordinal)}\"";
     private static string GroupDisplay(string value) => value.Contains('|') ? value[(value.IndexOf('|') + 1)..] : value;
 
@@ -1534,7 +1833,11 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         .Where(record => record.IsProductRecord)
         .GroupBy(record => string.IsNullOrWhiteSpace(record.CodeText) ? $"#LINE:{record.LineNumber}" : record.CodeText,
             StringComparer.OrdinalIgnoreCase)
-        .ToDictionary(group => group.Key, group => group.Last(), StringComparer.OrdinalIgnoreCase);
+        .SelectMany(group => group.Count() == 1
+            ? [new KeyValuePair<string, ParsedRecord>(group.Key, group.Single())]
+            : group.OrderBy(record => record.LineNumber)
+                .Select((record, index) => new KeyValuePair<string, ParsedRecord>($"{group.Key}#DUP:{index + 1}", record)))
+        .ToDictionary(pair => pair.Key, pair => pair.Value, StringComparer.OrdinalIgnoreCase);
 
     private static IReadOnlyList<CompareRow> BuildComparison(
         IReadOnlyDictionary<string, ParsedRecord> current,
@@ -1544,16 +1847,19 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         foreach (var key in current.Keys.Union(other.Keys, StringComparer.OrdinalIgnoreCase)
                      .OrderBy(value => value, StringComparer.CurrentCultureIgnoreCase))
         {
+            var isDuplicate = key.Contains("#DUP:", StringComparison.Ordinal);
             current.TryGetValue(key, out var oldRecord);
             other.TryGetValue(key, out var newRecord);
             if (oldRecord is null)
             {
-                result.Add(new CompareRow("Добавлен", newRecord!.CodeText, string.Empty, newRecord.ContentText, "Новая товарная строка"));
+                result.Add(new CompareRow(isDuplicate ? "Дубликат" : "Добавлен", newRecord!.CodeText, string.Empty, newRecord.ContentText,
+                    isDuplicate ? "Код встречается в файле несколько раз; однозначное сопоставление невозможно" : "Новая товарная строка"));
                 continue;
             }
             if (newRecord is null)
             {
-                result.Add(new CompareRow("Удалён", oldRecord.CodeText, oldRecord.ContentText, string.Empty, "Товар отсутствует во втором файле"));
+                result.Add(new CompareRow(isDuplicate ? "Дубликат" : "Удалён", oldRecord.CodeText, oldRecord.ContentText, string.Empty,
+                    isDuplicate ? "Код встречается в файле несколько раз; однозначное сопоставление невозможно" : "Товар отсутствует во втором файле"));
                 continue;
             }
 
@@ -1562,7 +1868,12 @@ public partial class MainWindow : Window, INotifyPropertyChanged
             AddChange(changes, "цена", oldRecord.PriceText, newRecord.PriceText);
             AddChange(changes, "штрихкод", oldRecord.BarcodeText, newRecord.BarcodeText);
             AddChange(changes, "маркировка", oldRecord.ProductTypeText, newRecord.ProductTypeText);
-            if (changes.Count > 0)
+            if (isDuplicate)
+            {
+                changes.Insert(0, "код дублируется; строки сопоставлены по порядку");
+                result.Add(new CompareRow("Дубликат", oldRecord.CodeText, oldRecord.ContentText, newRecord.ContentText, string.Join("; ", changes)));
+            }
+            else if (changes.Count > 0)
             {
                 result.Add(new CompareRow("Изменён", oldRecord.CodeText, oldRecord.ContentText, newRecord.ContentText, string.Join("; ", changes)));
             }
@@ -1600,16 +1911,41 @@ public partial class MainWindow : Window, INotifyPropertyChanged
 
     private static void SaveWindowScreenshot(Window window, string path)
     {
-        var width = Math.Max(1, (int)Math.Ceiling(window.ActualWidth));
-        var height = Math.Max(1, (int)Math.Ceiling(window.ActualHeight));
+        var visual = window.Content as FrameworkElement ?? window;
+        visual.UpdateLayout();
+        var width = Math.Max(1, (int)Math.Ceiling(visual.ActualWidth));
+        var height = Math.Max(1, (int)Math.Ceiling(visual.ActualHeight));
         var bitmap = new RenderTargetBitmap(width, height, 96, 96, PixelFormats.Pbgra32);
-        bitmap.Render(window);
+        var drawing = new DrawingVisual();
+        using (var context = drawing.RenderOpen())
+        {
+            var bounds = new Rect(0, 0, width, height);
+            context.DrawRectangle(window.Background ?? Brushes.White, null, bounds);
+            context.DrawRectangle(new VisualBrush(visual), null, bounds);
+        }
+        bitmap.Render(drawing);
 
         var encoder = new PngBitmapEncoder();
         encoder.Frames.Add(BitmapFrame.Create(bitmap));
         Directory.CreateDirectory(Path.GetDirectoryName(Path.GetFullPath(path))!);
         using var stream = File.Create(path);
         encoder.Save(stream);
+    }
+
+    private static void ApplyRequestedWindowSize(Window window, IReadOnlyList<string> arguments, string option)
+    {
+        var index = Enumerable.Range(0, arguments.Count)
+            .FirstOrDefault(item => arguments[item].Equals(option, StringComparison.OrdinalIgnoreCase), -1);
+        if (index < 0 || index + 2 >= arguments.Count ||
+            !double.TryParse(arguments[index + 1], NumberStyles.Float, CultureInfo.InvariantCulture, out var width) ||
+            !double.TryParse(arguments[index + 2], NumberStyles.Float, CultureInfo.InvariantCulture, out var height))
+        {
+            return;
+        }
+
+        window.WindowState = WindowState.Normal;
+        window.Width = Math.Max(window.MinWidth, width);
+        window.Height = Math.Max(window.MinHeight, height);
     }
 }
 

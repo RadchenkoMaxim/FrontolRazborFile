@@ -6,6 +6,11 @@ namespace FrontolFileAnalyzer;
 
 public partial class App : Application
 {
+    public static string ErrorLogPath => Path.Combine(
+        Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+        "FrontolFileAnalyzer",
+        "error.log");
+
     public App()
     {
         DispatcherUnhandledException += HandleUnhandledException;
@@ -15,9 +20,9 @@ public partial class App : Application
     {
         try
         {
-            var folder = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "FrontolFileAnalyzer");
+            var folder = Path.GetDirectoryName(ErrorLogPath)!;
             Directory.CreateDirectory(folder);
-            File.AppendAllText(Path.Combine(folder, "error.log"),
+            File.AppendAllText(ErrorLogPath,
                 $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss}] {e.Exception}\n\n");
         }
         catch
@@ -26,7 +31,8 @@ public partial class App : Application
         }
 
         MessageBox.Show(
-            "Операцию не удалось выполнить. Приложение продолжит работу.\n\n" + e.Exception.Message,
+            "Операцию не удалось выполнить. Приложение продолжит работу.\n\n" + e.Exception.Message +
+            $"\n\nПодробности записаны в:\n{ErrorLogPath}",
             "Ошибка приложения", MessageBoxButton.OK, MessageBoxImage.Error);
         e.Handled = true;
     }

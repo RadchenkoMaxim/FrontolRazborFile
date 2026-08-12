@@ -93,7 +93,7 @@ public sealed class AnalyzedField
     public string RequiredText => Required ? "Да" : "Нет";
 
     public string SourceText => WasProvided
-        ? string.IsNullOrEmpty(RawValue) ? "Пусто" : "Передано"
+        ? string.IsNullOrEmpty(RawValue) ? "Передано пустым" : "Передано"
         : "Не передано";
 
     public string StatusText => Severity switch
@@ -115,12 +115,14 @@ public sealed class AnalyzedField
         : string.Empty;
 
     public bool IsValueEmpty => string.IsNullOrEmpty(RawValue);
-    public string DisplayValue => IsValueEmpty ? "не передано" : RawValue;
+    public string DisplayValue => !WasProvided ? "не передано" : IsValueEmpty ? "пусто" : RawValue;
 }
 
 public sealed class ParsedRecord : INotifyPropertyChanged
 {
     private bool _isModified;
+    private IReadOnlyList<AnalyzedField>? _fields;
+    private string? _searchText;
 
     public event PropertyChangedEventHandler? PropertyChanged;
     public required int LineNumber { get; init; }
@@ -130,7 +132,15 @@ public sealed class ParsedRecord : INotifyPropertyChanged
     public required string Summary { get; init; }
     public string? CommandName { get; init; }
     public CommandDefinition? Definition { get; init; }
-    public IReadOnlyList<AnalyzedField> Fields { get; init; } = [];
+    public IReadOnlyList<AnalyzedField> Fields
+    {
+        get => _fields ??= FieldFactory?.Invoke() ?? [];
+        init => _fields = value;
+    }
+    internal Func<IReadOnlyList<AnalyzedField>>? FieldFactory { get; init; }
+    internal IReadOnlyList<string>? RawValues { get; init; }
+    internal int FieldCount { get; init; }
+    internal IssueSeverity FieldSeverity { get; init; }
     public IReadOnlyList<AnalysisIssue> Issues { get; init; } = [];
     public bool IsModified
     {
@@ -151,7 +161,11 @@ public sealed class ParsedRecord : INotifyPropertyChanged
         get
         {
             var issueSeverity = Issues.Count == 0 ? IssueSeverity.None : Issues.Max(issue => issue.Severity);
-            var fieldSeverity = Fields.Count == 0 ? IssueSeverity.None : Fields.Max(item => item.Severity);
+            var fieldSeverity = FieldSeverity;
+            if (fieldSeverity == IssueSeverity.None && _fields is { Count: > 0 })
+            {
+                fieldSeverity = _fields.Max(item => item.Severity);
+            }
             return issueSeverity > fieldSeverity ? issueSeverity : fieldSeverity;
         }
     }
@@ -175,12 +189,12 @@ public sealed class ParsedRecord : INotifyPropertyChanged
 
     public string CommandText => string.IsNullOrEmpty(CommandName) ? string.Empty : $"$$${CommandName}";
 
-    public string CodeText => Kind == FrontolRecordKind.Data && Fields.Count > 0 ? Fields[0].RawValue : string.Empty;
+    public string CodeText => RawValueAt(1);
 
-    public string BarcodeText => Kind == FrontolRecordKind.Data && Fields.Count > 1 ? Fields[1].RawValue : string.Empty;
+    public string BarcodeText => RawValueAt(2);
 
-    public string PriceText => Kind == FrontolRecordKind.Data && Fields.Count > 4 ? Fields[4].RawValue : string.Empty;
-    public string ProductNameText => Kind == FrontolRecordKind.Data && Fields.Count > 2 ? Fields[2].RawValue : string.Empty;
+    public string PriceText => RawValueAt(5);
+    public string ProductNameText => RawValueAt(3);
 
     public string CodeDisplayText => IsProductRecord ? EmptyAsNotProvided(CodeText) : CodeText;
     public string BarcodeDisplayText => IsProductRecord ? EmptyAsNotProvided(BarcodeText) : BarcodeText;
@@ -193,7 +207,7 @@ public sealed class ParsedRecord : INotifyPropertyChanged
     public bool IsProductRecord =>
         Kind == FrontolRecordKind.Data &&
         IsProductCommand &&
-        Fields.Count >= 55;
+        FieldCount >= 55;
 
     public string SectionGroup => Kind switch
     {
@@ -219,7 +233,7 @@ public sealed class ParsedRecord : INotifyPropertyChanged
                 return null;
             }
 
-            var value = Fields[54].RawValue.Trim();
+            var value = RawValueAt(55).Trim();
             return value.Length == 0 ? "0" : value;
         }
     }
@@ -236,9 +250,9 @@ public sealed class ParsedRecord : INotifyPropertyChanged
         {
             if (Kind == FrontolRecordKind.Data &&
                 IsProductCommand &&
-                Fields.Count >= 3)
+                FieldCount >= 3)
             {
-                return EmptyAsNotProvided(Fields[2].RawValue);
+                return EmptyAsNotProvided(ProductNameText);
             }
 
             return Kind == FrontolRecordKind.Data ? Summary : Title;
@@ -249,11 +263,26 @@ public sealed class ParsedRecord : INotifyPropertyChanged
         ? Definition?.Description ?? "Служебная строка файла обмена."
         : string.Join(Environment.NewLine, Issues.Select(issue => $"• {issue.Message}"));
 
-    public string SearchText => string.Join(' ', new[]
+    public string SearchText => _searchText ??= string.Join(' ', new[]
         { LineNumber.ToString(), KindText, CommandName, Title, Summary, RawText, CodeText, ContentText, ProductTypeText, BarcodeText, PriceText }
         .Where(value => !string.IsNullOrWhiteSpace(value)));
 
     private static string EmptyAsNotProvided(string value) => string.IsNullOrEmpty(value) ? "не передано" : value;
+
+    private string RawValueAt(int number)
+    {
+        if (Kind != FrontolRecordKind.Data || number <= 0)
+        {
+            return string.Empty;
+        }
+
+        if (RawValues is { } values)
+        {
+            return number <= values.Count ? values[number - 1] : string.Empty;
+        }
+
+        return number <= Fields.Count ? Fields[number - 1].RawValue : string.Empty;
+    }
 }
 
 public sealed class AnalysisDocument

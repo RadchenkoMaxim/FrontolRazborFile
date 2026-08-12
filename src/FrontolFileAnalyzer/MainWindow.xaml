@@ -5,7 +5,7 @@
         xmlns:local="clr-namespace:FrontolFileAnalyzer"
         Title="Анализатор файла обмена Frontol"
         Icon="Assets/app.ico"
-        Width="1440" Height="820" MinWidth="1080" MinHeight="650"
+        Width="1440" Height="820" MinWidth="720" MinHeight="390"
         WindowState="Maximized"
         WindowStartupLocation="CenterScreen"
         Background="#F0F0F0"
@@ -13,6 +13,7 @@
         DragOver="Window_DragOver"
         Drop="Window_Drop"
         PreviewKeyDown="Window_PreviewKeyDown"
+        SizeChanged="Window_SizeChanged"
         Closing="Window_Closing"
         Loaded="Window_Loaded">
     <Grid>
@@ -28,7 +29,7 @@
         <Menu Grid.Row="0" Background="#F7F7F7" BorderBrush="#D2D2D2" BorderThickness="0,0,0,1">
             <MenuItem Header="_Файл">
                 <MenuItem Header="_Выбрать и проанализировать..." InputGestureText="Ctrl+O" Click="OpenFile_Click" IsEnabled="{Binding CanStartLoad}" />
-                <MenuItem Header="_Сохранить" InputGestureText="Ctrl+S" Click="SaveFile_Click" IsEnabled="{Binding CanSaveFile}" />
+                <MenuItem Header="_Сохранить" InputGestureText="Ctrl+S" Click="SaveFile_Click" IsEnabled="{Binding CanSaveChanges}" />
                 <MenuItem Header="Сохранить _как..." InputGestureText="Ctrl+Shift+S" Click="SaveFileAs_Click" IsEnabled="{Binding CanSaveFile}" />
                 <Separator />
                 <MenuItem Header="_Экспорт видимых строк..." Click="Export_Click" IsEnabled="{Binding HasLoadedRecords}" />
@@ -39,6 +40,15 @@
                 <MenuItem Header="Показать в _папке" Click="ShowInFolder_Click" IsEnabled="{Binding CanOpenCurrentFile}" />
                 <Separator />
                 <MenuItem Header="_Выход" Click="Exit_Click" />
+            </MenuItem>
+            <MenuItem Header="_Правка">
+                <MenuItem Header="Изменить выбранное поле..." InputGestureText="F2"
+                          Click="EditField_Click" IsEnabled="{Binding CanEditSelectedField}" />
+                <MenuItem Header="Расширенное редактирование строки..." Click="EditRawLine_Click"
+                          IsEnabled="{Binding HasLoadedRecords}" />
+                <Separator />
+                <MenuItem Header="Массово изменить вид маркировки..." InputGestureText="Ctrl+Shift+M"
+                          Click="BulkEditMarking_Click" IsEnabled="{Binding HasLoadedRecords}" />
             </MenuItem>
             <MenuItem Header="_Вид">
                 <MenuItem Header="Скрыть / показать список строк" InputGestureText="Ctrl+M" Click="ToggleRecordsPane_Click" />
@@ -63,7 +73,7 @@
                 <Button Click="OpenFile_Click" IsEnabled="{Binding CanStartLoad}" ToolTip="Открыть файл (Ctrl+O)">
                     <StackPanel Orientation="Horizontal"><Path Style="{StaticResource ToolbarIcon}" Data="{StaticResource IconOpen}" /><TextBlock Text="Открыть" /></StackPanel>
                 </Button>
-                <Button Click="SaveFile_Click" IsEnabled="{Binding CanSaveFile}" ToolTip="Сохранить изменения (Ctrl+S)">
+                <Button Click="SaveFile_Click" IsEnabled="{Binding CanSaveChanges}" ToolTip="Сохранить изменения (Ctrl+S)">
                     <StackPanel Orientation="Horizontal"><Path Style="{StaticResource ToolbarIcon}" Data="{StaticResource IconSave}" /><TextBlock Text="Сохранить" /></StackPanel>
                 </Button>
                 <Button Click="Export_Click" IsEnabled="{Binding HasLoadedRecords}" ToolTip="Экспортировать строки, оставшиеся после фильтра">
@@ -71,6 +81,10 @@
                 </Button>
                 <Button Click="Compare_Click" IsEnabled="{Binding HasLoadedRecords}" ToolTip="Сравнить товары с другим файлом">
                     <StackPanel Orientation="Horizontal"><Path Style="{StaticResource ToolbarIcon}" Data="{StaticResource IconCompare}" /><TextBlock Text="Сравнить" /></StackPanel>
+                </Button>
+                <Button Click="BulkEditMarking_Click" IsEnabled="{Binding HasLoadedRecords}"
+                        ToolTip="Массово заменить вид маркировки у выбранных групп">
+                    <StackPanel Orientation="Horizontal"><Path Style="{StaticResource ToolbarIcon}" Stroke="{StaticResource MarkingBrush}" Data="{StaticResource IconMarking}" /><TextBlock Text="Маркировка" /></StackPanel>
                 </Button>
                 <Separator />
                 <Button Click="CommandReference_Click" ToolTip="Справочник команд и полей">
@@ -84,7 +98,7 @@
                 <Separator />
                 <TextBlock Margin="6,0,4,0" VerticalAlignment="Center" Foreground="#555555" Text="Файл:" />
                 <TextBlock Width="390" Padding="4,0" VerticalAlignment="Center"
-                           Text="{Binding FilePath, Mode=OneWay}" TextTrimming="CharacterEllipsis"
+                           Text="{Binding FileDisplayName, Mode=OneWay}" TextTrimming="CharacterEllipsis"
                            ToolTip="{Binding FilePath, Mode=OneWay}" />
             </ToolBar>
         </ToolBarTray>
@@ -102,40 +116,60 @@
                     <Border Margin="14,0" BorderBrush="#BFBFBF" BorderThickness="1,0,0,0" />
                     <TextBlock Text="{Binding ProblemCountLabel}" />
                 </StackPanel>
-                <WrapPanel Grid.Row="1" Margin="0,6,0,0" Orientation="Horizontal">
-                    <TextBlock Margin="0,0,4,0" VerticalAlignment="Center" Text="Поиск:" />
-                    <TextBox x:Name="SearchBox" Width="210" TextChanged="Search_TextChanged" ToolTip="Поиск по строке, коду, названию, команде и маркировке" />
-                    <TextBlock Margin="10,0,4,0" VerticalAlignment="Center" Text="Раздел:" />
-                    <ComboBox x:Name="SectionFilterBox" Width="145" SelectedIndex="0" SelectionChanged="Filter_SelectionChanged">
+                <Grid Grid.Row="1" Margin="0,7,0,0" IsEnabled="{Binding HasLoadedRecords}">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="1.05*" />
+                        <ColumnDefinition Width="0.78*" />
+                        <ColumnDefinition Width="1.65*" />
+                        <ColumnDefinition Width="0.95*" />
+                        <ColumnDefinition Width="1.15*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <StackPanel Margin="0,0,8,0">
+                        <TextBlock Margin="0,0,0,2" Foreground="{StaticResource MutedTextBrush}" FontSize="11" Text="Поиск" />
+                        <TextBox x:Name="SearchBox" TextChanged="Search_TextChanged" ToolTip="Поиск по строке, коду, названию, команде и маркировке" />
+                    </StackPanel>
+                    <StackPanel Grid.Column="1" Margin="0,0,8,0">
+                        <TextBlock Margin="0,0,0,2" Foreground="{StaticResource MutedTextBrush}" FontSize="11" Text="Раздел" />
+                        <ComboBox x:Name="SectionFilterBox" SelectedIndex="0" SelectionChanged="Filter_SelectionChanged">
                         <ComboBoxItem Content="Все разделы" />
                         <ComboBoxItem Content="Товары" />
                         <ComboBoxItem Content="Служебные" />
                         <ComboBoxItem Content="Структура файла" />
-                    </ComboBox>
-                    <TextBlock Margin="10,0,4,0" VerticalAlignment="Center" Text="Команда:" />
-                    <ComboBox Width="390" MaxDropDownHeight="430" ItemsSource="{Binding CommandFilters}"
-                              SelectedItem="{Binding SelectedCommandFilter, Mode=TwoWay}"
-                              ToolTip="{Binding SelectedItem.Description, RelativeSource={RelativeSource Self}}">
-                        <ComboBox.ItemTemplate>
-                            <DataTemplate>
-                                <TextBlock MaxWidth="610" Text="{Binding DisplayText}" TextTrimming="CharacterEllipsis"
-                                           ToolTip="{Binding Description}" ToolTipService.InitialShowDelay="300" />
-                            </DataTemplate>
-                        </ComboBox.ItemTemplate>
-                    </ComboBox>
-                    <TextBlock Margin="10,0,4,0" VerticalAlignment="Center" Text="Состояние:" />
-                    <ComboBox x:Name="SeverityFilterBox" Width="165" SelectedIndex="0" SelectionChanged="Filter_SelectionChanged">
+                        </ComboBox>
+                    </StackPanel>
+                    <StackPanel Grid.Column="2" Margin="0,0,8,0">
+                        <TextBlock Margin="0,0,0,2" Foreground="{StaticResource MutedTextBrush}" FontSize="11" Text="Команда" />
+                        <ComboBox MaxDropDownHeight="430" ItemsSource="{Binding CommandFilters}"
+                                  SelectedItem="{Binding SelectedCommandFilter, Mode=TwoWay}"
+                                  ToolTip="{Binding SelectedItem.Description, RelativeSource={RelativeSource Self}}">
+                            <ComboBox.ItemTemplate>
+                                <DataTemplate>
+                                    <TextBlock MaxWidth="610" Text="{Binding DisplayText}" TextTrimming="CharacterEllipsis"
+                                               ToolTip="{Binding Description}" ToolTipService.InitialShowDelay="300" />
+                                </DataTemplate>
+                            </ComboBox.ItemTemplate>
+                        </ComboBox>
+                    </StackPanel>
+                    <StackPanel Grid.Column="3" Margin="0,0,8,0">
+                        <TextBlock Margin="0,0,0,2" Foreground="{StaticResource MutedTextBrush}" FontSize="11" Text="Состояние" />
+                        <ComboBox x:Name="SeverityFilterBox" SelectedIndex="0" SelectionChanged="Filter_SelectionChanged">
                         <ComboBoxItem Content="Все строки" />
                         <ComboBoxItem Content="Ошибки и предупреждения" />
                         <ComboBoxItem Content="Только ошибки" />
                         <ComboBoxItem Content="Без замечаний" />
-                    </ComboBox>
-                    <TextBlock Margin="10,0,4,0" VerticalAlignment="Center" Text="Маркировка:" />
-                    <Button MinWidth="190" MaxWidth="270" Padding="8,2" HorizontalContentAlignment="Left"
-                            Content="{Binding MarkingFilterLabel}" Click="ConfigureMarkingFilter_Click"
-                            ToolTip="Выбрать один или несколько видов маркировки" />
-                    <Button Margin="8,0,0,0" Padding="8,2" Content="Сбросить" Click="ResetFilters_Click" />
-                </WrapPanel>
+                        </ComboBox>
+                    </StackPanel>
+                    <StackPanel Grid.Column="4" Margin="0,0,8,0">
+                        <TextBlock Margin="0,0,0,2" Foreground="{StaticResource MutedTextBrush}" FontSize="11" Text="Маркировка" />
+                        <Button Padding="8,2" HorizontalContentAlignment="Left"
+                                Content="{Binding MarkingFilterLabel}" Click="ConfigureMarkingFilter_Click"
+                                ToolTip="Выбрать один или несколько видов маркировки" />
+                    </StackPanel>
+                    <Button Grid.Column="5" MinWidth="92" VerticalAlignment="Bottom" Padding="8,2"
+                            Content="Сбросить" Click="ResetFilters_Click"
+                            ToolTip="Очистить поиск и все фильтры" />
+                </Grid>
             </Grid>
         </Border>
 
@@ -154,7 +188,7 @@
 
         <Grid Grid.Row="4" Margin="6">
             <Grid.ColumnDefinitions>
-                <ColumnDefinition x:Name="RecordsColumn" Width="655" MinWidth="480" />
+                <ColumnDefinition x:Name="RecordsColumn" Width="655" MinWidth="300" />
                 <ColumnDefinition Width="27" />
                 <ColumnDefinition Width="*" />
             </Grid.ColumnDefinitions>
@@ -322,50 +356,36 @@
                             <Grid Margin="0,6,0,1"
                                   Visibility="{Binding IsProductRecord, Converter={StaticResource BooleanToVisibilityConverter}}">
                                 <Grid.ColumnDefinitions>
-                                    <ColumnDefinition Width="Auto" />
-                                    <ColumnDefinition Width="*" />
-                                    <ColumnDefinition Width="Auto" />
-                                    <ColumnDefinition Width="Auto" />
-                                    <ColumnDefinition Width="220" />
+                                    <ColumnDefinition Width="0.8*" />
+                                    <ColumnDefinition Width="2.1*" />
+                                    <ColumnDefinition Width="0.85*" />
+                                    <ColumnDefinition Width="1.35*" />
+                                    <ColumnDefinition Width="1.5*" />
                                 </Grid.ColumnDefinitions>
-                                <Border Padding="7,4" Background="{StaticResource PrimarySoftBrush}" CornerRadius="3">
-                                    <StackPanel Orientation="Horizontal">
-                                        <TextBlock Margin="0,0,5,0" Foreground="{StaticResource PrimaryBrush}" Text="Код:" />
-                                        <TextBlock FontFamily="Consolas" FontWeight="Bold" Foreground="{StaticResource PrimaryBrush}" Text="{Binding CodeDisplayText}" ToolTip="{Binding CodeDisplayText}" />
-                                    </StackPanel>
+                                <Border Height="34" Padding="7,0" Background="{StaticResource PrimarySoftBrush}" CornerRadius="3">
+                                    <TextBlock VerticalAlignment="Center" TextTrimming="CharacterEllipsis" ToolTip="{Binding CodeDisplayText}">
+                                        <Run Foreground="{StaticResource PrimaryBrush}" Text="Код: " /><Run FontWeight="Bold" Foreground="{StaticResource PrimaryBrush}" Text="{Binding CodeDisplayText, Mode=OneWay}" />
+                                    </TextBlock>
                                 </Border>
-                                <Border Grid.Column="1" Margin="6,0" Padding="7,4" Background="{StaticResource SurfaceAltBrush}" CornerRadius="3">
-                                    <Grid>
-                                        <Grid.ColumnDefinitions>
-                                            <ColumnDefinition Width="Auto" />
-                                            <ColumnDefinition Width="*" />
-                                        </Grid.ColumnDefinitions>
-                                        <TextBlock Margin="0,0,5,0" Foreground="#5B5B5B" Text="Наименование:" />
-                                        <TextBlock Grid.Column="1" FontWeight="SemiBold" Text="{Binding ProductNameDisplayText}" TextTrimming="CharacterEllipsis" ToolTip="{Binding ProductNameDisplayText}" />
-                                    </Grid>
+                                <Border Grid.Column="1" Height="34" Margin="6,0" Padding="7,0" Background="{StaticResource SurfaceAltBrush}" CornerRadius="3">
+                                    <TextBlock VerticalAlignment="Center" TextTrimming="CharacterEllipsis" ToolTip="{Binding ProductNameDisplayText}">
+                                        <Run Foreground="#5B5B5B" Text="Наименование: " /><Run FontWeight="SemiBold" Text="{Binding ProductNameDisplayText, Mode=OneWay}" />
+                                    </TextBlock>
                                 </Border>
-                                <Border Grid.Column="2" Padding="7,4" Background="{StaticResource PrimarySoftBrush}" CornerRadius="3">
-                                    <StackPanel Orientation="Horizontal">
-                                        <TextBlock Margin="0,0,5,0" Foreground="{StaticResource PrimaryBrush}" Text="Цена:" />
-                                        <TextBlock FontFamily="Consolas" FontWeight="Bold" Text="{Binding PriceDisplayText}" ToolTip="{Binding PriceDisplayText}" />
-                                    </StackPanel>
+                                <Border Grid.Column="2" Height="34" Padding="7,0" Background="{StaticResource PrimarySoftBrush}" CornerRadius="3">
+                                    <TextBlock VerticalAlignment="Center" TextTrimming="CharacterEllipsis" ToolTip="{Binding PriceDisplayText}">
+                                        <Run Foreground="{StaticResource PrimaryBrush}" Text="Цена: " /><Run FontWeight="Bold" Text="{Binding PriceDisplayText, Mode=OneWay}" />
+                                    </TextBlock>
                                 </Border>
-                                <Border Grid.Column="3" Margin="6,0" Padding="7,4" Background="{StaticResource SurfaceAltBrush}" CornerRadius="3">
-                                    <StackPanel Orientation="Horizontal">
-                                        <TextBlock Margin="0,0,5,0" Foreground="#5B5B5B" Text="Штрихкод:" />
-                                        <TextBlock FontFamily="Consolas" FontWeight="SemiBold" Text="{Binding BarcodeDisplayText}" TextTrimming="CharacterEllipsis" ToolTip="{Binding BarcodeDisplayText}" />
-                                    </StackPanel>
+                                <Border Grid.Column="3" Height="34" Margin="6,0" Padding="7,0" Background="{StaticResource SurfaceAltBrush}" CornerRadius="3">
+                                    <TextBlock VerticalAlignment="Center" TextTrimming="CharacterEllipsis" ToolTip="{Binding BarcodeDisplayText}">
+                                        <Run Foreground="#5B5B5B" Text="Штрихкод: " /><Run FontWeight="SemiBold" Text="{Binding BarcodeDisplayText, Mode=OneWay}" />
+                                    </TextBlock>
                                 </Border>
-                                <Border Grid.Column="4" Padding="7,4" Background="{StaticResource MarkingSoftBrush}" CornerRadius="3">
-                                    <Grid>
-                                        <Grid.ColumnDefinitions>
-                                            <ColumnDefinition Width="Auto" />
-                                            <ColumnDefinition Width="*" />
-                                        </Grid.ColumnDefinitions>
-                                        <TextBlock Margin="0,0,5,0" Foreground="{StaticResource MarkingBrush}" Text="Маркировка:" />
-                                        <TextBlock Grid.Column="1" FontWeight="Bold" Foreground="{StaticResource MarkingBrush}"
-                                                   Text="{Binding ProductTypeDisplayText}" TextTrimming="CharacterEllipsis" ToolTip="{Binding ProductTypeDisplayText}" />
-                                    </Grid>
+                                <Border Grid.Column="4" Height="34" Padding="7,0" Background="{StaticResource MarkingSoftBrush}" CornerRadius="3">
+                                    <TextBlock VerticalAlignment="Center" TextTrimming="CharacterEllipsis" ToolTip="{Binding ProductTypeDisplayText}">
+                                        <Run Foreground="{StaticResource MarkingBrush}" Text="Маркировка: " /><Run FontWeight="Bold" Foreground="{StaticResource MarkingBrush}" Text="{Binding ProductTypeDisplayText, Mode=OneWay}" />
+                                    </TextBlock>
                                 </Border>
                             </Grid>
                         </StackPanel>
@@ -381,8 +401,8 @@
                 </Border>
 
                 <Border Grid.Row="1" Padding="8,5" Background="{StaticResource SurfaceAltBrush}" BorderBrush="{StaticResource DividerBrush}" BorderThickness="0,0,0,1">
-                    <DockPanel>
-                        <StackPanel DockPanel.Dock="Left" Orientation="Horizontal">
+                    <WrapPanel>
+                        <StackPanel Orientation="Horizontal">
                             <CheckBox VerticalAlignment="Center" Content="Показывать пустые поля"
                                       IsChecked="{Binding DataContext.ShowEmptyFields, RelativeSource={RelativeSource AncestorType=Window}, Mode=TwoWay}" />
                             <Button Margin="10,0,0,0" Padding="8,2" Click="ConfigureFields_Click"
@@ -397,9 +417,9 @@
                                 </StackPanel>
                             </Button>
                         </StackPanel>
-                        <TextBlock DockPanel.Dock="Right" VerticalAlignment="Center" Foreground="#555555"
+                        <TextBlock Margin="10,5,0,0" VerticalAlignment="Center" Foreground="#555555"
                                    Text="{Binding DataContext.FieldVisibilityLabel, RelativeSource={RelativeSource AncestorType=Window}}" />
-                    </DockPanel>
+                    </WrapPanel>
                 </Border>
 
                 <DataGrid x:Name="FieldsGrid" Grid.Row="2"
@@ -408,6 +428,7 @@
                           AutoGenerateColumns="False" IsReadOnly="True"
                           SelectionUnit="CellOrRowHeader"
                           SelectedCellsChanged="FieldsGrid_SelectedCellsChanged"
+                          PreviewMouseRightButtonDown="FieldsGrid_RightClick"
                           MouseDoubleClick="FieldsGrid_MouseDoubleClick"
                           CanUserAddRows="False" CanUserDeleteRows="False"
                           CanUserReorderColumns="True" CanUserResizeColumns="True" CanUserSortColumns="True"
@@ -490,7 +511,7 @@
                     </DataGrid.Columns>
                 </DataGrid>
 
-                <Border Grid.Row="3" Margin="0,5,0,0" Padding="7,5" Background="{StaticResource SurfaceAltBrush}" BorderThickness="0">
+                <Border x:Name="FullCellTextPanel" Grid.Row="3" Margin="0,5,0,0" Padding="7,5" Background="{StaticResource SurfaceAltBrush}" BorderThickness="0">
                     <Grid>
                         <Grid.ColumnDefinitions><ColumnDefinition Width="135" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions>
                         <TextBlock FontWeight="SemiBold" Text="Полный текст ячейки:" />
@@ -500,33 +521,35 @@
                     </Grid>
                 </Border>
 
-                <GroupBox Grid.Row="4" Header="Параметры выбранного поля" Margin="0,5,0,0" Padding="6"
+                <GroupBox x:Name="SelectedFieldDetailsPanel" Grid.Row="4" Header="Параметры выбранного поля" Margin="0,5,0,0" Padding="6"
                           DataContext="{Binding DataContext.SelectedField, RelativeSource={RelativeSource AncestorType=Window}}">
                     <Grid>
                         <Grid.RowDefinitions>
                             <RowDefinition Height="Auto" />
                             <RowDefinition Height="Auto" />
+                            <RowDefinition Height="Auto" />
                         </Grid.RowDefinitions>
-                        <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="90" />
-                            <ColumnDefinition Width="166" />
-                            <ColumnDefinition Width="65" />
-                            <ColumnDefinition Width="130" />
-                            <ColumnDefinition Width="75" />
-                            <ColumnDefinition Width="70" />
-                            <ColumnDefinition Width="*" />
-                        </Grid.ColumnDefinitions>
-                        <TextBlock FontWeight="SemiBold" Text="Поле:" />
-                        <TextBlock Grid.Column="1" Text="{Binding Name}" TextTrimming="CharacterEllipsis" />
-                        <TextBlock Grid.Column="2" FontWeight="SemiBold" Text="№ / тип:" />
-                        <TextBlock Grid.Column="3">
-                            <Run Text="{Binding Number}" /><Run Text=" · " /><Run Text="{Binding DataType}" />
-                        </TextBlock>
-                        <TextBlock Grid.Column="4" FontWeight="SemiBold" Text="Обяз.:" />
-                        <TextBlock Grid.Column="5" Text="{Binding RequiredText}" />
-                        <TextBlock Grid.Column="6" Text="{Binding Purpose}" TextWrapping="Wrap" />
+                        <WrapPanel>
+                            <StackPanel Margin="0,0,20,3" Orientation="Horizontal">
+                                <TextBlock Margin="0,0,6,0" FontWeight="SemiBold" Text="Поле:" />
+                                <TextBlock Text="{Binding Name}" TextTrimming="CharacterEllipsis" ToolTip="{Binding Name}" />
+                            </StackPanel>
+                            <StackPanel Margin="0,0,20,3" Orientation="Horizontal">
+                                <TextBlock Margin="0,0,6,0" FontWeight="SemiBold" Text="№ / тип:" />
+                                <TextBlock><Run Text="{Binding Number}" /><Run Text=" · " /><Run Text="{Binding DataType}" /></TextBlock>
+                            </StackPanel>
+                            <StackPanel Margin="0,0,0,3" Orientation="Horizontal">
+                                <TextBlock Margin="0,0,6,0" FontWeight="SemiBold" Text="Обязательно:" />
+                                <TextBlock Text="{Binding RequiredText}" />
+                            </StackPanel>
+                            <StackPanel Margin="20,0,0,3" Orientation="Horizontal">
+                                <TextBlock Margin="0,0,6,0" FontWeight="SemiBold" Text="Источник:" />
+                                <TextBlock Text="{Binding SourceText}" />
+                            </StackPanel>
+                        </WrapPanel>
+                        <TextBlock Grid.Row="1" Margin="0,3,0,0" Text="{Binding Purpose}" TextWrapping="Wrap" />
 
-                        <Border Grid.Row="1" Grid.ColumnSpan="7" Margin="0,7,0,0" Padding="7,5"
+                        <Border Grid.Row="2" Margin="0,7,0,0" Padding="7,5"
                                 Background="{StaticResource SurfaceAltBrush}" BorderThickness="0"
                                 Visibility="{Binding HasExtendedInterpretation, Converter={StaticResource BooleanToVisibilityConverter}}">
                             <Grid>
@@ -555,6 +578,37 @@
                 </Expander>
             </Grid>
         </Grid>
+
+        <Border Grid.Row="4" Margin="6" Panel.ZIndex="5" Background="{StaticResource SurfaceBrush}" CornerRadius="5">
+            <Border.Style>
+                <Style TargetType="Border">
+                    <Setter Property="Visibility" Value="Visible" />
+                    <Style.Triggers>
+                        <DataTrigger Binding="{Binding HasLoadedRecords}" Value="True">
+                            <Setter Property="Visibility" Value="Collapsed" />
+                        </DataTrigger>
+                    </Style.Triggers>
+                </Style>
+            </Border.Style>
+            <StackPanel Width="480" MaxWidth="{Binding ActualWidth, RelativeSource={RelativeSource AncestorType=Window}}"
+                        HorizontalAlignment="Center" VerticalAlignment="Center">
+                <Image Width="78" Height="78" Source="Assets/app-logo.png" Stretch="Uniform" />
+                <TextBlock Margin="0,16,0,0" HorizontalAlignment="Center" FontSize="22" FontWeight="SemiBold"
+                           Text="Анализатор файла обмена Frontol" />
+                <TextBlock Margin="18,7" HorizontalAlignment="Center" TextAlignment="Center" TextWrapping="Wrap"
+                           Foreground="{StaticResource MutedTextBrush}"
+                           Text="Откройте base.txt или перетащите файл в это окно. Программа покажет команды, поля, маркировку и ошибки формата." />
+                <Button MinWidth="170" Margin="0,10,0,0" HorizontalAlignment="Center" Padding="18,7"
+                        Click="OpenFile_Click" IsDefault="True">
+                    <StackPanel Orientation="Horizontal">
+                        <Path Style="{StaticResource ToolbarIcon}" Data="{StaticResource IconOpen}" />
+                        <TextBlock Text="Открыть файл…" />
+                    </StackPanel>
+                </Button>
+                <TextBlock Margin="0,12,0,0" HorizontalAlignment="Center" Foreground="{StaticResource MutedTextBrush}"
+                           Text="Ctrl+O · последние файлы — в меню «Файл»" />
+            </StackPanel>
+        </Border>
 
         <StatusBar Grid.Row="5" Background="#E7E7E7" BorderBrush="#C8C8C8" BorderThickness="0,1,0,0">
             <StatusBarItem>

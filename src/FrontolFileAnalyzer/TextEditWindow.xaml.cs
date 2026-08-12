@@ -10,6 +10,7 @@ public partial class TextEditWindow : Window
         Title = title;
         PromptText.Text = prompt;
         ValueText.Text = value;
+        SourceInitialized += (_, _) => WindowBoundsHelper.ConstrainToOwnerWorkingArea(this);
         Loaded += (_, _) =>
         {
             ValueText.Focus();

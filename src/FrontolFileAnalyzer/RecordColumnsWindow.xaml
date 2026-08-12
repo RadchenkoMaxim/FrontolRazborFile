@@ -1,8 +1,12 @@
 <Window x:Class="FrontolFileAnalyzer.RecordColumnsWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        Title="Колонки списка строк" Width="430" Height="430" MinWidth="390" MinHeight="330"
-        WindowStartupLocation="CenterOwner" ShowInTaskbar="False">
+        Title="Колонки списка строк"
+        Icon="Assets/app.ico"
+        Width="430" Height="430" MinWidth="360" MinHeight="300"
+        WindowStartupLocation="CenterOwner"
+        ResizeMode="CanResizeWithGrip"
+        ShowInTaskbar="False">
     <Grid Margin="12">
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto" />
@@ -12,15 +16,29 @@
         <TextBlock Margin="0,0,0,8" Text="Отметьте колонки, которые должны быть видны в левом списке." TextWrapping="Wrap" />
         <DataGrid Grid.Row="1" ItemsSource="{Binding Options}" AutoGenerateColumns="False"
                   CanUserAddRows="False" CanUserDeleteRows="False" HeadersVisibility="Column"
-                  RowHeaderWidth="0" AlternatingRowBackground="#F7F7F7">
+                  RowHeaderWidth="0" AlternatingRowBackground="#F7F7F7"
+                  ScrollViewer.HorizontalScrollBarVisibility="Auto"
+                  ScrollViewer.VerticalScrollBarVisibility="Auto">
             <DataGrid.Columns>
-                <DataGridCheckBoxColumn Header="Показывать" Binding="{Binding IsVisible}" Width="95" />
+                <DataGridCheckBoxColumn Header="Показывать"
+                                        Binding="{Binding IsVisible, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                        Width="105" />
                 <DataGridTextColumn Header="Колонка" Binding="{Binding Header}" Width="*" IsReadOnly="True" />
             </DataGrid.Columns>
         </DataGrid>
         <Grid Grid.Row="2" Margin="0,10,0,0">
-            <Button HorizontalAlignment="Left" Padding="10,3" Content="Сбросить размеры" Click="Reset_Click" />
-            <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="Auto" />
+            </Grid.RowDefinitions>
+            <Button HorizontalAlignment="Left"
+                    Padding="10,3"
+                    Content="Сбросить размеры"
+                    Click="Reset_Click" />
+            <StackPanel Grid.Row="1"
+                        Margin="0,8,0,0"
+                        Orientation="Horizontal"
+                        HorizontalAlignment="Right">
                 <Button Width="80" Margin="0,0,7,0" IsDefault="True" Content="ОК" Click="Ok_Click" />
                 <Button Width="80" IsCancel="True" Content="Отмена" />
             </StackPanel>

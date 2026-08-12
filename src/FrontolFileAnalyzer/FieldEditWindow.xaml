@@ -1,0 +1,74 @@
+<Window x:Class="FrontolFileAnalyzer.FieldEditWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Изменить поле" Width="720" Height="290" MinWidth="500" MinHeight="250"
+        WindowStartupLocation="CenterOwner" ShowInTaskbar="False" ResizeMode="CanResizeWithGrip"
+        Icon="Assets/app.ico">
+    <Grid Margin="16">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+            <RowDefinition Height="Auto" />
+        </Grid.RowDefinitions>
+
+        <StackPanel>
+            <TextBlock FontSize="18" FontWeight="SemiBold" Text="{Binding FieldTitle}" />
+            <TextBlock Margin="0,3,0,0" Foreground="{StaticResource MutedTextBrush}" Text="{Binding FieldMetadata}"
+                       TextTrimming="CharacterEllipsis" ToolTip="{Binding FieldMetadata}" />
+            <TextBlock Margin="0,5,0,0" Text="{Binding Purpose}" TextWrapping="Wrap" />
+        </StackPanel>
+
+        <Grid Grid.Row="1" Margin="0,14,0,10">
+            <Grid.ColumnDefinitions><ColumnDefinition Width="112" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions>
+            <TextBlock VerticalAlignment="Center" Foreground="{StaticResource MutedTextBrush}" Text="Текущее значение" />
+            <Border Grid.Column="1" Padding="9,6" Background="{StaticResource SurfaceAltBrush}" CornerRadius="3">
+                <TextBlock FontFamily="Consolas" Text="{Binding CurrentDisplayValue}" TextWrapping="Wrap" />
+            </Border>
+        </Grid>
+
+        <Grid Grid.Row="2">
+            <TextBox x:Name="SimpleValueText" Height="36" VerticalAlignment="Top" VerticalContentAlignment="Center"
+                     FontFamily="Consolas" FontSize="14" Text="{Binding SimpleValue, UpdateSourceTrigger=PropertyChanged}" />
+
+            <ComboBox x:Name="ChoiceBox" Height="36" VerticalAlignment="Top"
+                      ItemsSource="{Binding Choices}" SelectedItem="{Binding SelectedChoice, Mode=TwoWay}"
+                      DisplayMemberPath="DisplayText" />
+
+            <ScrollViewer x:Name="FlagsScroller" VerticalScrollBarVisibility="Auto">
+                <StackPanel>
+                    <TextBlock Margin="0,0,0,8" Foreground="{StaticResource MutedTextBrush}"
+                               Text="Отметьте разрешённые действия. Программа сама соберёт последовательность из 15 флагов." />
+                    <ItemsControl ItemsSource="{Binding Flags}">
+                        <ItemsControl.ItemsPanel>
+                            <ItemsPanelTemplate><WrapPanel /></ItemsPanelTemplate>
+                        </ItemsControl.ItemsPanel>
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate>
+                                <Border Width="210" Margin="0,0,8,7" Padding="8,6" Background="{StaticResource SurfaceAltBrush}" CornerRadius="3">
+                                    <CheckBox IsChecked="{Binding IsEnabled, Mode=TwoWay}" Content="{Binding DisplayText}"
+                                              ToolTip="{Binding DisplayText}" />
+                                </Border>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                </StackPanel>
+            </ScrollViewer>
+        </Grid>
+
+        <Grid Grid.Row="3" Margin="0,14,0,0">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="Auto" />
+            </Grid.ColumnDefinitions>
+            <StackPanel VerticalAlignment="Center">
+                <TextBlock Foreground="{StaticResource MutedTextBrush}" Text="{Binding EditorHint}" />
+                <TextBlock x:Name="ValidationText" Margin="0,3,12,0" Foreground="{StaticResource ErrorBrush}" TextWrapping="Wrap" />
+            </StackPanel>
+            <StackPanel Grid.Column="1" Orientation="Horizontal" HorizontalAlignment="Right">
+                <Button MinWidth="128" Margin="8,0,8,0" IsDefault="True" Content="Применить" Click="Apply_Click" />
+                <Button MinWidth="90" IsCancel="True" Content="Отмена" />
+            </StackPanel>
+        </Grid>
+    </Grid>
+</Window>
