@@ -82,7 +82,7 @@
                 <TextBlock FontSize="22" FontWeight="SemiBold" Foreground="#172033"
                            Text="Сводная статистика" />
                 <TextBlock Margin="0,3,0,0" Foreground="#64748B" TextWrapping="Wrap"
-                           Text="Состав файла, распределение маркировки и диагностика команд" />
+                           Text="{Binding SummarySubtitle}" />
             </StackPanel>
 
             <ItemsControl Grid.Row="1" ItemsSource="{Binding Cards}">
@@ -173,14 +173,14 @@
                         <TextBlock DockPanel.Dock="Right" Margin="8,2,0,0" Foreground="#64748B"
                                    Text="{Binding CommandSummary}" />
                         <TextBlock FontSize="15" FontWeight="SemiBold" Foreground="#24324A"
-                                   Text="Команды файла" TextTrimming="CharacterEllipsis" />
+                                   Text="{Binding EntitySectionTitle}" TextTrimming="CharacterEllipsis" />
                     </DockPanel>
                     <DataGrid Grid.Row="1" MinHeight="150"
                               Style="{StaticResource QuietDataGridStyle}"
                               ColumnHeaderStyle="{StaticResource QuietColumnHeaderStyle}"
                               ItemsSource="{Binding CommandRows}">
                         <DataGrid.Columns>
-                            <DataGridTextColumn Header="Команда" Binding="{Binding DisplayName}" Width="*"
+                            <DataGridTextColumn Header="Команда / транзакция" Binding="{Binding DisplayName}" Width="*"
                                                 ElementStyle="{StaticResource EllipsisCellTextStyle}" />
                             <DataGridTextColumn Header="Строк данных" Binding="{Binding DataRowCount, StringFormat={}{0:N0}}" Width="104"
                                                 ElementStyle="{StaticResource EllipsisCellTextStyle}" />

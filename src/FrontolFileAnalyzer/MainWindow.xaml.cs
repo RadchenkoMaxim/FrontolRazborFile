@@ -39,6 +39,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
     private string _encodingLabel = "Кодировка: —";
     private string _recordCountLabel = "Строк: 0";
     private string _problemCountLabel = "Замечаний: 0";
+    private string _fileKindLabel = "Режим не выбран";
     private string _statusMessage = "Откройте или перетащите файл обмена Frontol";
     private string _fieldVisibilityLabel = "Поля не выбраны";
     private string _loadProgressText = string.Empty;
@@ -62,6 +63,9 @@ public partial class MainWindow : Window, INotifyPropertyChanged
     private string? _loadedFileHash;
     private GridLength _recordsPaneWidth = new(655);
     private bool _recordsPaneCollapsedByLayout;
+    private ExchangeFileKind _fileKind = ExchangeFileKind.UploadToFrontol;
+    private SalesReportAnalysis _salesReport = SalesReportAnalysis.Empty;
+    private SalesDocumentSummary? _selectedSalesDocument;
 
     public MainWindow()
     {
@@ -95,6 +99,18 @@ public partial class MainWindow : Window, INotifyPropertyChanged
     public ObservableCollection<MarkingFilterOption> MarkingFilters => _markingFilters;
     public ObservableCollection<CommandFilterOption> CommandFilters => _commandFilters;
     public string VersionLabel => ApplicationInfo.VersionLabel;
+
+    public SalesReportAnalysis SalesReport
+    {
+        get => _salesReport;
+        private set => SetField(ref _salesReport, value);
+    }
+
+    public SalesDocumentSummary? SelectedSalesDocument
+    {
+        get => _selectedSalesDocument;
+        set => SetField(ref _selectedSalesDocument, value);
+    }
 
     public string SearchTextQuery => _searchText;
 
@@ -157,6 +173,12 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         private set => SetField(ref _problemCountLabel, value);
     }
 
+    public string FileKindLabel
+    {
+        get => _fileKindLabel;
+        private set => SetField(ref _fileKindLabel, value);
+    }
+
     public string StatusMessage
     {
         get => _statusMessage;
@@ -200,6 +222,8 @@ public partial class MainWindow : Window, INotifyPropertyChanged
                 OnPropertyChanged(nameof(CanEditSelectedField));
                 OnPropertyChanged(nameof(CanSaveFile));
                 OnPropertyChanged(nameof(CanSaveChanges));
+                OnPropertyChanged(nameof(CanUseUploadTools));
+                OnPropertyChanged(nameof(CanEditRawLine));
             }
         }
     }
@@ -249,17 +273,29 @@ public partial class MainWindow : Window, INotifyPropertyChanged
 
     public bool HasCurrentFile => File.Exists(FilePath);
     public bool HasLoadedRecords => _records.Count > 0;
+    public bool IsUploadFile => _fileKind == ExchangeFileKind.UploadToFrontol;
     public bool CanStartLoad => !IsLoading;
     public bool CanOpenCurrentFile => !IsLoading && HasCurrentFile;
     public bool CanConfigureFields => !IsLoading && SelectedRecord?.Fields.Count > 0;
-    public bool CanEditSelectedField => !IsLoading && SelectedRecord?.Kind == FrontolRecordKind.Data && SelectedField is not null;
-    public bool CanSaveFile => !IsLoading && _workingLines.Count > 0;
+    public bool CanEditSelectedField => !IsLoading && IsUploadFile && SelectedRecord?.Kind == FrontolRecordKind.Data && SelectedField is not null;
+    public bool CanEditRawLine => !IsLoading && IsUploadFile && HasLoadedRecords;
+    public bool CanUseUploadTools => !IsLoading && IsUploadFile && HasLoadedRecords;
+    public bool CanSaveFile => !IsLoading && IsUploadFile && _workingLines.Count > 0;
     public bool CanSaveChanges => CanSaveFile && _isDirty;
 
     private async void Window_Loaded(object sender, RoutedEventArgs e)
     {
         var arguments = Environment.GetCommandLineArgs().Skip(1).ToArray();
         ApplyRequestedWindowSize(this, arguments, "--window-size");
+        var startScreenshotIndex = Array.FindIndex(arguments, argument => argument.Equals("--screenshot-start", StringComparison.OrdinalIgnoreCase));
+        if (startScreenshotIndex >= 0 && arguments.Length > startScreenshotIndex + 1)
+        {
+            await Dispatcher.InvokeAsync(UpdateLayout, DispatcherPriority.ApplicationIdle);
+            SaveScreenshot(arguments[startScreenshotIndex + 1]);
+            Close();
+            return;
+        }
+
         var aboutScreenshotIndex = Array.FindIndex(arguments, argument => argument.Equals("--screenshot-about", StringComparison.OrdinalIgnoreCase));
         if (aboutScreenshotIndex >= 0 && arguments.Length > aboutScreenshotIndex + 1)
         {
@@ -294,6 +330,19 @@ public partial class MainWindow : Window, INotifyPropertyChanged
             window.Show();
             await Dispatcher.InvokeAsync(window.UpdateLayout, System.Windows.Threading.DispatcherPriority.ApplicationIdle);
             SaveWindowScreenshot(window, arguments[commandsScreenshotIndex + 1]);
+            window.Close();
+            Close();
+            return;
+        }
+
+        var salesReferenceScreenshotIndex = Array.FindIndex(arguments, argument => argument.Equals("--screenshot-sales-reference", StringComparison.OrdinalIgnoreCase));
+        if (salesReferenceScreenshotIndex >= 0 && arguments.Length > salesReferenceScreenshotIndex + 1)
+        {
+            var window = new CommandReferenceWindow(ExchangeFileKind.SalesReportFromFrontol) { Owner = this };
+            ApplyRequestedWindowSize(window, arguments, "--dialog-size");
+            window.Show();
+            await Dispatcher.InvokeAsync(window.UpdateLayout, DispatcherPriority.ApplicationIdle);
+            SaveWindowScreenshot(window, arguments[salesReferenceScreenshotIndex + 1]);
             window.Close();
             Close();
             return;
@@ -422,6 +471,27 @@ public partial class MainWindow : Window, INotifyPropertyChanged
             {
                 SetRecordsPaneVisibility(false);
             }
+            var salesTabIndex = Array.FindIndex(arguments, argument =>
+                argument.Equals("--sales-tab", StringComparison.OrdinalIgnoreCase));
+            if (_fileKind == ExchangeFileKind.SalesReportFromFrontol &&
+                salesTabIndex >= 0 && arguments.Length > salesTabIndex + 1)
+            {
+                WorkspaceTabs.SelectedItem = arguments[salesTabIndex + 1].ToLowerInvariant() switch
+                {
+                    "documents" => SalesDocumentsTab,
+                    "organizations" or "print-groups" => SalesOrganizationsTab,
+                    "products" => SalesProductsTab,
+                    "payments" => SalesPaymentsTab,
+                    "shifts" => SalesShiftsTab,
+                    "scenarios" or "examples" => SalesScenariosTab,
+                    "transactions" => TransactionsTab,
+                    _ => SalesOverviewTab
+                };
+                if (arguments[salesTabIndex + 1].Equals("examples", StringComparison.OrdinalIgnoreCase))
+                {
+                    SalesScenarioTabs.SelectedIndex = 1;
+                }
+            }
             await Dispatcher.InvokeAsync(UpdateLayout, System.Windows.Threading.DispatcherPriority.ApplicationIdle);
             SaveScreenshot(screenshotPath);
             Close();
@@ -454,6 +524,21 @@ public partial class MainWindow : Window, INotifyPropertyChanged
 
     private async void OpenFile_Click(object sender, RoutedEventArgs e)
     {
+        await OpenFileDialogAsync(null);
+    }
+
+    private async void OpenUploadFile_Click(object sender, RoutedEventArgs e)
+    {
+        await OpenFileDialogAsync(ExchangeFileKind.UploadToFrontol);
+    }
+
+    private async void OpenSalesReport_Click(object sender, RoutedEventArgs e)
+    {
+        await OpenFileDialogAsync(ExchangeFileKind.SalesReportFromFrontol);
+    }
+
+    private async Task OpenFileDialogAsync(ExchangeFileKind? expectedKind)
+    {
         if (IsLoading || !ConfirmDiscardChanges())
         {
             return;
@@ -461,15 +546,22 @@ public partial class MainWindow : Window, INotifyPropertyChanged
 
         var dialog = new OpenFileDialog
         {
-            Title = "Выберите файл обмена Frontol",
-            Filter = "Файлы обмена (*.txt;*.$*;*)|*.txt;*.$*;*|Все файлы (*.*)|*.*",
+            Title = expectedKind switch
+            {
+                ExchangeFileKind.UploadToFrontol => "Выберите файл загрузки в Frontol",
+                ExchangeFileKind.SalesReportFromFrontol => "Выберите отчёт о продажах из Frontol",
+                _ => "Выберите файл обмена Frontol"
+            },
+            Filter = expectedKind == ExchangeFileKind.SalesReportFromFrontol
+                ? "Отчёты Frontol (*.txt;*.$*)|*.txt;*.$*|Все файлы (*.*)|*.*"
+                : "Файлы обмена (*.txt;*.$*;*)|*.txt;*.$*;*|Все файлы (*.*)|*.*",
             CheckFileExists = true,
             Multiselect = false
         };
 
         if (dialog.ShowDialog(this) == true)
         {
-            await LoadFileAsync(dialog.FileName);
+            await LoadFileAsync(dialog.FileName, expectedKind);
         }
     }
 
@@ -629,9 +721,11 @@ public partial class MainWindow : Window, INotifyPropertyChanged
 
         var dialog = new SaveFileDialog
         {
-            Title = "Экспорт видимых строк",
+            Title = _fileKind == ExchangeFileKind.SalesReportFromFrontol ? "Экспорт собранного отчёта о продажах" : "Экспорт видимых строк",
             Filter = "CSV (*.csv)|*.csv|Текстовый файл (*.txt)|*.txt",
-            FileName = $"Frontol-анализ-{DateTime.Now:yyyyMMdd-HHmm}.csv"
+            FileName = _fileKind == ExchangeFileKind.SalesReportFromFrontol
+                ? $"Frontol-отчёт-продаж-{DateTime.Now:yyyyMMdd-HHmm}.csv"
+                : $"Frontol-анализ-{DateTime.Now:yyyyMMdd-HHmm}.csv"
         };
         if (dialog.ShowDialog(this) != true)
         {
@@ -640,21 +734,35 @@ public partial class MainWindow : Window, INotifyPropertyChanged
 
         try
         {
-            var rows = RecordsView.Cast<ParsedRecord>().ToArray();
-            var builder = new StringBuilder();
-            builder.AppendLine("Строка;Раздел;Команда;Код;Наименование;Цена;Штрихкод;Маркировка;Статус;Исходная строка");
-            foreach (var record in rows)
+            string exportText;
+            int exportedRows;
+            if (_fileKind == ExchangeFileKind.SalesReportFromFrontol)
             {
-                builder.AppendLine(string.Join(';', new[]
+                exportText = BuildSalesReportExport(SalesReport);
+                exportedRows = SalesReport.Documents.Count + SalesReport.Products.Count + SalesReport.Payments.Count +
+                               SalesReport.PrintGroups.Count + SalesReport.Shifts.Count + SalesReport.Kegs.Count +
+                               SalesReport.Adjustments.Count + SalesReport.Taxes.Count + SalesReport.Diagnostics.Count;
+            }
+            else
+            {
+                var rows = RecordsView.Cast<ParsedRecord>().ToArray();
+                var builder = new StringBuilder();
+                builder.AppendLine("Строка;Раздел;Команда;Код;Наименование;Цена;Штрихкод;Маркировка;Статус;Исходная строка");
+                foreach (var record in rows)
                 {
-                    record.LineNumber.ToString(), GroupDisplay(record.SectionGroup), record.CommandText,
-                    record.CodeText, record.ContentText, record.PriceText, record.BarcodeText,
-                    record.ProductTypeText, record.StatusText, record.RawText
-                }.Select(Csv)));
+                    builder.AppendLine(string.Join(';', new[]
+                    {
+                        record.LineNumber.ToString(), GroupDisplay(record.SectionGroup), record.CommandText,
+                        record.CodeText, record.ContentText, record.PriceText, record.BarcodeText,
+                        record.ProductTypeText, record.StatusText, record.RawText
+                    }.Select(Csv)));
+                }
+                exportText = builder.ToString();
+                exportedRows = rows.Length;
             }
 
-            await File.WriteAllTextAsync(dialog.FileName, builder.ToString(), new UTF8Encoding(true));
-            StatusMessage = $"Экспортировано строк: {rows.Length:N0}";
+            await File.WriteAllTextAsync(dialog.FileName, exportText, new UTF8Encoding(true));
+            StatusMessage = $"Экспортировано строк отчёта: {exportedRows:N0}";
         }
         catch (Exception exception)
         {
@@ -854,7 +962,13 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         new MarkingCodesWindow { Owner = this }.ShowDialog();
 
     private void CommandReference_Click(object sender, RoutedEventArgs e) =>
-        new CommandReferenceWindow { Owner = this }.ShowDialog();
+        new CommandReferenceWindow(ExchangeFileKind.UploadToFrontol) { Owner = this }.ShowDialog();
+
+    private void SalesReference_Click(object sender, RoutedEventArgs e) =>
+        new CommandReferenceWindow(ExchangeFileKind.SalesReportFromFrontol) { Owner = this }.ShowDialog();
+
+    private void CurrentReference_Click(object sender, RoutedEventArgs e) =>
+        new CommandReferenceWindow(_fileKind) { Owner = this }.ShowDialog();
 
     private void About_Click(object sender, RoutedEventArgs e) =>
         new AboutWindow { Owner = this }.ShowDialog();
@@ -1258,7 +1372,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
 
     private async void BulkEditMarking_Click(object sender, RoutedEventArgs e)
     {
-        if (IsLoading || !HasLoadedRecords)
+        if (!CanUseUploadTools)
         {
             return;
         }
@@ -1389,7 +1503,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
 
     private async void EditRawLine_Click(object sender, RoutedEventArgs e)
     {
-        if (IsLoading || SelectedRecord is not { } record)
+        if (!CanEditRawLine || SelectedRecord is not { } record)
         {
             return;
         }
@@ -1475,7 +1589,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         }
     }
 
-    private async Task LoadFileAsync(string path)
+    private async Task LoadFileAsync(string path, ExchangeFileKind? expectedKind = null)
     {
         var requestedPath = path.Trim().Trim('"');
 
@@ -1498,6 +1612,21 @@ public partial class MainWindow : Window, INotifyPropertyChanged
 
             var sourceBytes = await File.ReadAllBytesAsync(requestedPath);
             var document = await Task.Run(() => _parser.ParseBytes(requestedPath, sourceBytes, progress));
+            ApplyDocumentMode(document.FileKind);
+            if (document.FileKind == ExchangeFileKind.SalesReportFromFrontol)
+            {
+                LoadProgressIsIndeterminate = true;
+                LoadProgressText = "Сборка понятного отчёта о продажах";
+                var reportHistory = _settings.SalesReportHistory.ToArray();
+                SalesReport = await Task.Run(() => SalesReportAnalysis.Build(document.Records, reportHistory));
+                SelectedSalesDocument = SalesReport.Documents.FirstOrDefault(document => document.OperationCode is "0" or "1")
+                                        ?? SalesReport.Documents.FirstOrDefault();
+            }
+            else
+            {
+                SalesReport = SalesReportAnalysis.Empty;
+                SelectedSalesDocument = null;
+            }
             _loadedFileHash = Convert.ToHexString(SHA256.HashData(sourceBytes));
             _encodingName = document.EncodingName;
             _sourceEncoding = EncodingFor(document.EncodingName);
@@ -1517,18 +1646,35 @@ public partial class MainWindow : Window, INotifyPropertyChanged
 
             FilePath = document.FilePath;
             AddRecentFile(document.FilePath);
+            if (document.FileKind == ExchangeFileKind.SalesReportFromFrontol)
+            {
+                RememberSalesReport(document.FilePath, SalesReport.Overview);
+            }
             EncodingLabel = $"Кодировка: {document.EncodingName}";
-            RecordCountLabel = $"Строк: {document.Records.Count:N0} · данных: {document.DataRecordCount:N0}";
+            RecordCountLabel = document.FileKind == ExchangeFileKind.SalesReportFromFrontol
+                ? $"Строк: {document.Records.Count:N0} · транзакций: {document.DataRecordCount:N0}"
+                : $"Строк: {document.Records.Count:N0} · данных: {document.DataRecordCount:N0}";
             ProblemCountLabel = $"Ошибок: {document.ErrorCount:N0} · предупреждений: {document.WarningCount:N0}";
-            StatusMessage = $"Файл разобран: команд {document.CommandCount:N0}, строк данных {document.DataRecordCount:N0}";
-            SelectedRecord = _records.FirstOrDefault(record =>
-                                 record.Kind == FrontolRecordKind.Data &&
-                                 record.CommandName?.Contains("QUANTITY", StringComparison.OrdinalIgnoreCase) == true)
+            var typeCount = document.Records
+                .Where(record => record.Kind == FrontolRecordKind.Data && !string.IsNullOrWhiteSpace(record.CommandName))
+                .Select(record => record.CommandName)
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .Count();
+            StatusMessage = document.FileKind == ExchangeFileKind.SalesReportFromFrontol
+                ? $"Отчёт разобран: транзакций {document.DataRecordCount:N0}, типов {typeCount:N0}"
+                : $"Файл загрузки разобран: команд {document.CommandCount:N0}, строк данных {document.DataRecordCount:N0}";
+            if (expectedKind is { } expected && expected != document.FileKind)
+            {
+                StatusMessage += $" · выбран другой режим, фактически распознано: {document.FileKind.DisplayName()}";
+            }
+            SelectedRecord = _records.FirstOrDefault(record => record.Kind == FrontolRecordKind.Data && record.IsProductRecord)
                              ?? _records.FirstOrDefault(record => record.Kind == FrontolRecordKind.Data)
                              ?? _records.FirstOrDefault();
             SetDirty(false);
             OnPropertyChanged(nameof(HasLoadedRecords));
             OnPropertyChanged(nameof(CanSaveFile));
+            OnPropertyChanged(nameof(CanUseUploadTools));
+            OnPropertyChanged(nameof(CanEditRawLine));
             if (SelectedRecord is not null)
             {
                 await Dispatcher.InvokeAsync(
@@ -1602,6 +1748,12 @@ public partial class MainWindow : Window, INotifyPropertyChanged
 
     private void ApplyParsedDocument(AnalysisDocument document, int selectedLine, int? selectedFieldNumber)
     {
+        ApplyDocumentMode(document.FileKind);
+        SalesReport = document.FileKind == ExchangeFileKind.SalesReportFromFrontol
+            ? SalesReportAnalysis.Build(document.Records)
+            : SalesReportAnalysis.Empty;
+        SelectedSalesDocument = SalesReport.Documents.FirstOrDefault(document => document.OperationCode is "0" or "1")
+                                ?? SalesReport.Documents.FirstOrDefault();
         foreach (var record in document.Records.Where(record => _modifiedLineNumbers.Contains(record.LineNumber)))
         {
             record.IsModified = true;
@@ -1610,7 +1762,9 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         ReplaceRecordsView(_records);
         RebuildMarkingFilters(document.Records);
         RebuildCommandFilters(document.Records);
-        RecordCountLabel = $"Строк: {document.Records.Count:N0} · данных: {document.DataRecordCount:N0}";
+        RecordCountLabel = document.FileKind == ExchangeFileKind.SalesReportFromFrontol
+            ? $"Строк: {document.Records.Count:N0} · транзакций: {document.DataRecordCount:N0}"
+            : $"Строк: {document.Records.Count:N0} · данных: {document.DataRecordCount:N0}";
         ProblemCountLabel = $"Ошибок: {document.ErrorCount:N0} · предупреждений: {document.WarningCount:N0}";
         SelectedRecord = _records.FirstOrDefault(record => record.LineNumber == selectedLine) ?? _records.FirstOrDefault();
         if (selectedFieldNumber is { } number)
@@ -1620,6 +1774,41 @@ public partial class MainWindow : Window, INotifyPropertyChanged
 
         OnPropertyChanged(nameof(HasLoadedRecords));
         OnPropertyChanged(nameof(CanSaveFile));
+        OnPropertyChanged(nameof(CanUseUploadTools));
+        OnPropertyChanged(nameof(CanEditRawLine));
+    }
+
+    private void ApplyDocumentMode(ExchangeFileKind fileKind)
+    {
+        _fileKind = fileKind;
+        var salesReport = fileKind == ExchangeFileKind.SalesReportFromFrontol;
+        FileKindLabel = fileKind.DisplayName();
+        CommandColumn.Header = salesReport ? "Транзакция" : "Команда";
+        NameColumn.Header = salesReport ? "Событие / содержание" : "Наименование";
+        CommandFilterCaption.Text = salesReport ? "Транзакция" : "Команда";
+        ProductSectionFilter.Content = salesReport ? "Продажи и товары" : "Товары";
+        ServiceSectionFilter.Content = salesReport ? "Остальные транзакции" : "Служебные";
+        CurrentReferenceButton.ToolTip = salesReport
+            ? "Справочник транзакций и полей выгрузки"
+            : "Справочник команд и полей загрузки";
+        SalesOverviewTab.Visibility = salesReport ? Visibility.Visible : Visibility.Collapsed;
+        SalesDocumentsTab.Visibility = salesReport ? Visibility.Visible : Visibility.Collapsed;
+        SalesOrganizationsTab.Visibility = salesReport ? Visibility.Visible : Visibility.Collapsed;
+        SalesProductsTab.Visibility = salesReport ? Visibility.Visible : Visibility.Collapsed;
+        SalesPaymentsTab.Visibility = salesReport ? Visibility.Visible : Visibility.Collapsed;
+        SalesShiftsTab.Visibility = salesReport ? Visibility.Visible : Visibility.Collapsed;
+        SalesDiagnosticsTab.Visibility = salesReport ? Visibility.Visible : Visibility.Collapsed;
+        SalesKegsTab.Visibility = salesReport ? Visibility.Visible : Visibility.Collapsed;
+        SalesAdjustmentsTab.Visibility = salesReport ? Visibility.Visible : Visibility.Collapsed;
+        SalesScenariosTab.Visibility = salesReport ? Visibility.Visible : Visibility.Collapsed;
+        TransactionsTab.Header = salesReport ? "Транзакции" : "Строки и поля";
+        WorkspaceTabs.SelectedItem = salesReport ? SalesOverviewTab : TransactionsTab;
+        OnPropertyChanged(nameof(IsUploadFile));
+        OnPropertyChanged(nameof(CanSaveFile));
+        OnPropertyChanged(nameof(CanSaveChanges));
+        OnPropertyChanged(nameof(CanEditSelectedField));
+        OnPropertyChanged(nameof(CanEditRawLine));
+        OnPropertyChanged(nameof(CanUseUploadTools));
     }
 
     private void RebuildCommandFilters(IReadOnlyList<ParsedRecord> records)
@@ -1635,13 +1824,22 @@ public partial class MainWindow : Window, INotifyPropertyChanged
                     group.Key,
                     definition?.DisplayName ?? "Назначение не описано",
                     definition?.Description ?? "Для этой команды пока отсутствует встроенное описание.",
-                    group.Count());
+                    group.Count(),
+                    definition?.SyntaxPrefix ?? (_fileKind == ExchangeFileKind.SalesReportFromFrontol ? "№" : "$$$"));
             })
             .OrderBy(option => option.CommandName, StringComparer.OrdinalIgnoreCase)
             .ToArray();
 
         _commandFilters.Clear();
-        _commandFilters.Add(new CommandFilterOption(null, "Все команды", "Не ограничивать строки по команде.", records.Count));
+        var entityRecordCount = records.Count(record => !string.IsNullOrWhiteSpace(record.CommandName));
+        _commandFilters.Add(new CommandFilterOption(
+            null,
+            _fileKind == ExchangeFileKind.SalesReportFromFrontol ? "Все транзакции" : "Все команды",
+            _fileKind == ExchangeFileKind.SalesReportFromFrontol
+                ? "Не ограничивать строки по типу транзакции."
+                : "Не ограничивать строки по команде.",
+            entityRecordCount,
+            _fileKind == ExchangeFileKind.SalesReportFromFrontol ? "№" : "$$$"));
         foreach (var option in options)
         {
             _commandFilters.Add(option);
@@ -1780,6 +1978,33 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         _settingsStore.Save(_settings);
     }
 
+    private void RememberSalesReport(string path, SalesReportOverview overview)
+    {
+        if (string.IsNullOrWhiteSpace(overview.DatabaseId) || string.IsNullOrWhiteSpace(overview.ReportNumber) ||
+            overview.FirstTransactionNumber <= 0 || overview.LastTransactionNumber <= 0)
+        {
+            return;
+        }
+        var fullPath = Path.GetFullPath(path);
+        _settings.SalesReportHistory.RemoveAll(entry =>
+            string.Equals(entry.DatabaseId, overview.DatabaseId, StringComparison.Ordinal) &&
+            string.Equals(entry.ReportNumber, overview.ReportNumber, StringComparison.Ordinal) &&
+            entry.FirstTransactionNumber == overview.FirstTransactionNumber &&
+            entry.LastTransactionNumber == overview.LastTransactionNumber);
+        _settings.SalesReportHistory.Insert(0, new SalesReportHistoryEntry(
+            overview.DatabaseId,
+            overview.ReportNumber,
+            overview.FirstTransactionNumber,
+            overview.LastTransactionNumber,
+            fullPath,
+            DateTime.Now));
+        _settings.SalesReportHistory = _settings.SalesReportHistory
+            .OrderByDescending(entry => entry.AnalyzedAt)
+            .Take(100)
+            .ToList();
+        _settingsStore.Save(_settings);
+    }
+
     private void RebuildRecentFilesMenu()
     {
         if (RecentFilesMenu is null)
@@ -1845,7 +2070,9 @@ public partial class MainWindow : Window, INotifyPropertyChanged
     {
         _isDirty = value;
         var fileName = HasCurrentFile ? Path.GetFileName(FilePath) + " — " : string.Empty;
-        Title = fileName + "Анализатор файла обмена Frontol" + (value ? " *" : string.Empty);
+        Title = fileName + (_fileKind == ExchangeFileKind.SalesReportFromFrontol
+            ? "Анализатор отчёта о продажах Frontol"
+            : "Анализатор файла загрузки Frontol") + (value ? " *" : string.Empty);
         OnPropertyChanged(nameof(CanSaveChanges));
     }
 
@@ -1880,6 +2107,95 @@ public partial class MainWindow : Window, INotifyPropertyChanged
     {
         using var stream = File.OpenRead(path);
         return Convert.ToHexString(SHA256.HashData(stream));
+    }
+
+    private static string BuildSalesReportExport(SalesReportAnalysis report)
+    {
+        var builder = new StringBuilder();
+        void Row(params object?[] values) => builder.AppendLine(string.Join(';', values.Select(value => Csv(value switch
+        {
+            decimal number => number.ToString("0.00#", CultureInfo.GetCultureInfo("ru-RU")),
+            DateTime date => date.ToString("dd.MM.yyyy HH:mm:ss"),
+            _ => Convert.ToString(value, CultureInfo.CurrentCulture) ?? string.Empty
+        }))));
+        void Section(string name, params string[] headers)
+        {
+            if (builder.Length > 0)
+            {
+                builder.AppendLine();
+            }
+            Row(name);
+            Row(headers.Cast<object?>().ToArray());
+        }
+
+        Section("ОБЗОР", "База", "Номер отчёта", "Транзакций", "Продаж", "Возвратов", "Итог", "Оплаты", "Незавершённых");
+        Row(report.Overview.DatabaseId, report.Overview.ReportNumber, report.Overview.TransactionCount,
+            report.Overview.GrossSales, report.Overview.Returns, report.Overview.NetSales,
+            report.Overview.PaymentTotal, report.Overview.OpenDocumentCount);
+
+        Section("ДОКУМЕНТЫ", "Дата", "Предприятие", "РМ", "Смена", "Документ", "Операция", "Состояние", "Количество", "Товары", "Итог", "Оплаты", "Группы печати");
+        foreach (var document in report.Documents)
+        {
+            Row(document.DateText, document.EnterpriseId, document.Workstation, document.ShiftNumber,
+                document.DocumentNumber, document.OperationName, document.Status, document.Quantity,
+                document.ItemsAmount, document.Total, document.PaymentTotal, document.PrintGroupsText);
+        }
+
+        Section("ПРЕДПРИЯТИЯ И ГРУППЫ ПЕЧАТИ", "Предприятие", "Код ГП", "Документов", "Позиций", "Количество", "Продажи", "Возвраты", "Итог", "Оплаты", "Сверка");
+        foreach (var group in report.PrintGroups)
+        {
+            Row(group.EnterpriseId, group.PrintGroupCode, group.DocumentCount, group.ProductLineCount,
+                group.Quantity, group.GrossSales, group.Returns, group.NetSales, group.PaymentTotal, group.BalanceText);
+        }
+
+        Section("ТОВАРЫ", "Предприятие", "Код", "Наименование", "Штрихкод", "Вид", "ГП", "Документов", "Строк", "Количество", "Средняя цена", "Сумма");
+        foreach (var product in report.Products)
+        {
+            Row(product.EnterpriseId, product.ProductCode, product.ProductDisplayName, product.Barcode,
+                product.ProductTypeName, product.PrintGroupCode, product.DocumentCount, product.LineCount,
+                product.Quantity, product.AveragePrice, product.Amount);
+        }
+
+        Section("ОПЛАТЫ", "Предприятие", "Транзакция", "Код", "Способ", "Документов", "Транзакций", "Сумма");
+        foreach (var payment in report.Payments)
+        {
+            Row(payment.EnterpriseId, $"№{payment.TransactionType}", payment.PaymentCode, payment.PaymentName,
+                payment.DocumentCount, payment.TransactionCount, payment.Amount);
+        }
+
+        Section("СМЕНЫ", "Предприятие", "РМ", "Смена", "Открыта", "Закрыта", "По документам", "№61", "№63", "Сверка");
+        foreach (var shift in report.Shifts)
+        {
+            Row(shift.EnterpriseId, shift.Workstation, shift.ShiftNumber, shift.OpenedText, shift.ClosedText,
+                shift.NetSales, shift.ProgramSalesText, shift.HardwareSalesText, shift.ReconciliationText);
+        }
+
+        Section("КЕГИ", "Дата", "Предприятие", "Документ", "Операция", "Товар", "Код кега", "ГП", "Объём", "Цена", "Сумма", "Состояние");
+        foreach (var keg in report.Kegs)
+        {
+            Row(keg.DateText, keg.EnterpriseId, keg.DocumentNumber, keg.OperationName, keg.ProductName,
+                keg.KegCode, keg.PrintGroupCode, keg.Volume, keg.Price, keg.Amount, keg.Status);
+        }
+
+        Section("СКИДКИ И ОКРУГЛЕНИЯ", "Предприятие", "Транзакция", "Вид", "ГП", "Документов", "Транзакций", "Сумма");
+        foreach (var adjustment in report.Adjustments)
+        {
+            Row(adjustment.EnterpriseId, $"№{adjustment.TransactionType}", adjustment.Name,
+                adjustment.PrintGroupCode, adjustment.DocumentCount, adjustment.TransactionCount, adjustment.Amount);
+        }
+
+        Section("НАЛОГИ", "Предприятие", "ГП", "Источник", "Ставка", "Документов", "Сумма");
+        foreach (var tax in report.Taxes)
+        {
+            Row(tax.EnterpriseId, tax.PrintGroupCode, tax.Source, tax.Rate, tax.DocumentCount, tax.Amount);
+        }
+
+        Section("СВЕРКА", "Статус", "Раздел", "Объект", "Количество", "Объяснение");
+        foreach (var diagnostic in report.Diagnostics)
+        {
+            Row(diagnostic.Severity, diagnostic.Category, diagnostic.Scope, diagnostic.Count, diagnostic.Message);
+        }
+        return builder.ToString();
     }
 
     private static string Csv(string value) => $"\"{(value ?? string.Empty).Replace("\"", "\"\"", StringComparison.Ordinal)}\"";
@@ -2016,15 +2332,16 @@ public sealed class MarkingFilterOption(string? code, string name, int count)
         : $"{Code} — {Name} ({Count:N0})";
 }
 
-public sealed class CommandFilterOption(string? commandName, string displayName, string description, int count)
+public sealed class CommandFilterOption(string? commandName, string displayName, string description, int count, string syntaxPrefix)
 {
     public string? CommandName { get; } = commandName;
     public string DisplayName { get; } = displayName;
     public string Description { get; } = description;
     public int Count { get; } = count;
+    public string SyntaxPrefix { get; } = syntaxPrefix;
     public string DisplayText => CommandName is null
-        ? $"Все команды ({Count:N0})"
-        : $"$$${CommandName} — {DisplayName} ({Count:N0})";
+        ? $"{DisplayName} ({Count:N0})"
+        : $"{SyntaxPrefix}{CommandName} — {DisplayName} ({Count:N0})";
 }
 
 internal sealed record RecordColumnState(

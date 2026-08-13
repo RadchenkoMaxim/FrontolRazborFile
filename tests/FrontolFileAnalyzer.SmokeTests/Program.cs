@@ -2,9 +2,9 @@ using FrontolFileAnalyzer.Core;
 using System.Text;
 using System.Text.RegularExpressions;
 
-if (args.Length is < 1 or > 2 || !File.Exists(args[0]) || (args.Length == 2 && !File.Exists(args[1])))
+if (args.Length is < 1 or > 3 || args.Any(path => !File.Exists(path)))
 {
-    Console.Error.WriteLine("Передайте путь к тестовому base.txt и, при необходимости, к полному файлу.");
+    Console.Error.WriteLine("Передайте путь к тестовому base.txt и, при необходимости, до двух полных файлов загрузки/выгрузки.");
     return 2;
 }
 
@@ -193,9 +193,227 @@ var dateConditionFields = marketingConditions.ResolveFields(new[] { "1", "24", "
 Assert(dateConditionFields.Count == 5 && dateConditionFields[4].Name == "Контроль даты",
     "Условие 24 ADDMARKETINGCONDITIONS должно раскрывать схему дат.");
 
-if (args.Length == 2)
+var reportFixturePath = Path.Combine(Path.GetDirectoryName(Path.GetFullPath(args[0]))!, "report-sample.txt");
+Assert(File.Exists(reportFixturePath), $"Не найден тестовый отчёт о продажах: {reportFixturePath}");
+var reportDocument = new FrontolFileParser().ParseFile(reportFixturePath);
+Assert(reportDocument.FileKind == ExchangeFileKind.SalesReportFromFrontol,
+    "Файл с шапкой @ / идентификатор БД / номер отчёта должен распознаваться как выгрузка продаж.");
+Assert(reportDocument.Records.Count == 6 && reportDocument.DataRecordCount == 3,
+    $"В тестовом отчёте ожидалось 6 строк и 3 транзакции, получено {reportDocument.Records.Count}/{reportDocument.DataRecordCount}.");
+Assert(reportDocument.Records[0].Fields.Single().Interpretation.Contains("обработан", StringComparison.OrdinalIgnoreCase),
+    "Символ @ должен объясняться как признак уже обработанного отчёта.");
+var salePosition = reportDocument.Records.Single(record => record.CommandName == "11");
+Assert(salePosition.IsProductRecord && salePosition.CodeText == "941" && salePosition.Fields.Count == 44,
+    "Транзакция 11 должна раскрываться как товарная строка с 44 документированными полями.");
+Assert(salePosition.HasTerminatingDelimiter && salePosition.Fields.All(field => field.Number <= 44),
+    "Завершающая точка с запятой отчёта не должна создавать фиктивное поле №45.");
+Assert(salePosition.Fields[31].Name == "Тип номенклатуры / маркировки" && salePosition.ProductTypeCode == "0",
+    "Поле 32 транзакции товара должно определять вид номенклатуры/маркировки.");
+var fiscalClose = reportDocument.Records.Single(record => record.CommandName == "45");
+Assert(fiscalClose.Fields[43].Name == "Дата и время расчёта" && fiscalClose.Fields[43].RawValue == "06.07.2026 8:55:17",
+    "Поле 44 транзакции 45 должно содержать дату и время фискального расчёта.");
+Assert(FrontolSalesTransactionCatalog.All.Count == 56,
+    $"В руководстве ожидается 56 типов транзакций, встроено {FrontolSalesTransactionCatalog.All.Count}.");
+var expectedTransactionCodes = new[]
 {
-    var fullDocument = new FrontolFileParser().ParseFile(args[1]);
+    "1", "2", "3", "4", "6", "9", "10", "11", "12", "14", "15", "16", "17",
+    "21", "22", "23", "24", "25", "26", "27", "29", "30", "31", "32", "33", "34",
+    "35", "36", "37", "38", "40", "42", "43", "45", "49", "50", "51", "55", "56",
+    "57", "58", "60", "61", "62", "63", "64", "65", "82", "83", "84", "85", "86",
+    "87", "88", "120", "121"
+};
+Assert(FrontolSalesTransactionCatalog.All.Select(definition => definition.Name)
+        .OrderBy(code => int.Parse(code))
+        .SequenceEqual(expectedTransactionCodes.OrderBy(code => int.Parse(code))),
+    "Каталог должен в точности совпадать со списком транзакций на страницах 273-275 руководства.");
+Assert(FrontolSalesTransactionCatalog.All.All(definition =>
+        definition.Fields.Select(field => field.Number).SequenceEqual(Enumerable.Range(1, 44))),
+    "Каждый тип транзакции выгрузки должен объяснять поля №1-44 без пропусков.");
+Assert(FrontolSalesTransactionCatalog.All.All(definition =>
+        definition.Description.Length > 100 && definition.Description.Contains("Frontol → учётная система", StringComparison.Ordinal)),
+    "Каждая транзакция должна иметь развёрнутое объяснение бизнес-смысла и направления данных.");
+Assert(FrontolSalesDocumentationCatalog.All.Count >= 30 &&
+       FrontolSalesDocumentationCatalog.All.All(example =>
+           example.Explanation.Length > 100 && example.ManualReference.Contains("17.2.2", StringComparison.Ordinal)),
+    "Справка должна покрывать примеры и особые правила раздела 17.2.2 руководства.");
+Assert(FrontolSalesDocumentationCatalog.All.Any(example =>
+        example.Title.Contains("Постановка кега", StringComparison.Ordinal) &&
+        example.OperationCodes.Contains("27", StringComparer.Ordinal)),
+    "В справке должен быть сценарий постановки пивного кега на кран.");
+
+var sampleAnalysis = SalesReportAnalysis.Build(reportDocument.Records);
+Assert(sampleAnalysis.Documents.Count == 1 && sampleAnalysis.Documents[0].Items.Count == 1,
+    "Тестовая выгрузка должна собираться в один понятный документ с одной товарной позицией.");
+Assert(sampleAnalysis.Documents[0].Total == 53.17m && sampleAnalysis.Overview.GrossSales == 53.17m,
+    "Если №55 отсутствует, итог закрытого документа должен браться из транзакции ККТ №45, а не из неполного набора позиций.");
+Assert(sampleAnalysis.DocumentationExamples.Count == FrontolSalesDocumentationCatalog.All.Count,
+    "Все примеры руководства должны отображаться даже при отсутствии в выбранном отчёте.");
+
+var mixedOrganizationsLines = new[]
+{
+    "@", "1", "900",
+    SalesTransaction("1", "42", "100", "0", "0"),
+    SalesTransaction("2", "11", "100", "0", "1", "100", "1", "OOO-TOVAR"),
+    SalesTransaction("3", "11", "100", "0", "2", "50", "1", "IP-TOVAR"),
+    SalesTransaction("4", "40", "100", "0", "0", "130"),
+    SalesTransaction("5", "43", "100", "0", "1", "88"),
+    SalesTransaction("6", "43", "100", "0", "2", "42"),
+    SalesTransaction("7", "36", "100", "0", "0", "20"),
+    SalesTransaction("8", "86", "100", "0", "1", "12"),
+    SalesTransaction("9", "86", "100", "0", "2", "8"),
+    SalesTransaction("10", "49", "100", "0", "1", "100"),
+    SalesTransaction("11", "49", "100", "0", "2", "50"),
+    SalesTransaction("12", "55", "100", "0", "0", "150"),
+    SalesTransaction("13", "42", "101", "1", "0"),
+    SalesTransaction("14", "11", "101", "1", "1", "40", "1", "OOO-RETURN"),
+    SalesTransaction("15", "33", "101", "1", "0", "40"),
+    SalesTransaction("16", "83", "101", "1", "1", "40"),
+    SalesTransaction("17", "49", "101", "1", "1", "40"),
+    SalesTransaction("18", "55", "101", "1", "0", "40"),
+    SalesTransaction("19", "42", "102", "0", "0"),
+    SalesTransaction("20", "11", "102", "0", "1", "1000", "1", "CANCELLED-GROUP1"),
+    SalesTransaction("21", "56", "102", "0", "0", "1000")
+};
+var mixedOrganizationsDocument = new FrontolFileParser().ParseLines(
+    "mixed-organizations-report.txt", mixedOrganizationsLines, "UTF-8");
+var mixedOrganizationsAnalysis = SalesReportAnalysis.Build(mixedOrganizationsDocument.Records);
+Assert(mixedOrganizationsAnalysis.Documents.Count == 3 && mixedOrganizationsAnalysis.Overview.CancelledDocumentCount == 1,
+    "Продажа, возврат и отменённый чек должны собираться в три отдельных документа.");
+Assert(mixedOrganizationsAnalysis.PrintGroups.Count == 2,
+    "Группы печати 1 и 2 должны стать двумя отдельными разрезами отчёта.");
+var group1 = mixedOrganizationsAnalysis.PrintGroups.Single(group => group.PrintGroupCode == "1");
+var group2 = mixedOrganizationsAnalysis.PrintGroups.Single(group => group.PrintGroupCode == "2");
+Assert(group1.PrintGroupName == "Группа печати 1" && group1.GrossSales == 100m && group1.Returns == 40m &&
+       group1.NetSales == 60m && group1.PaymentTotal == 60m && group1.DocumentCount == 2 && group1.BalanceText == "Сходится",
+    "Группа 1 должна получить продажу 100, возврат 40 и оплату 60; отменённый чек на 1000 не должен попасть в итог.");
+Assert(group2.PrintGroupName == "Группа печати 2" && group2.GrossSales == 50m && group2.Returns == 0m &&
+       group2.NetSales == 50m && group2.PaymentTotal == 50m && group2.BalanceText == "Сходится",
+    "Группа 2 должна получить только свою товарную часть и распределённую оплату.");
+Assert(mixedOrganizationsAnalysis.Overview.GrossSales == 150m &&
+       mixedOrganizationsAnalysis.Overview.Returns == 40m &&
+       mixedOrganizationsAnalysis.Overview.NetSales == 110m &&
+       mixedOrganizationsAnalysis.Overview.PaymentTotal == 110m &&
+       mixedOrganizationsAnalysis.Overview.ProductLineCount == 3 &&
+       mixedOrganizationsAnalysis.Products.All(product => product.ProductCode != "CANCELLED-GROUP1"),
+    "Общий отчёт должен учитывать фискальную, нефискальную и бонусную оплаты ровно один раз.");
+
+var returnStornoLines = new[]
+{
+    "@", "1", "901",
+    SalesTransaction("1", "42", "200", "1", "1"),
+    SalesTransaction("2", "11", "200", "1", "1", "-100", "-1", "RETURNED"),
+    SalesTransaction("3", "12", "200", "1", "1", "40", "1", "STORNO-RETURNED"),
+    SalesTransaction("4", "58", "200", "1", "1", "-60")
+};
+var returnStornoDocument = new FrontolFileParser().ParseLines("return-storno-report.txt", returnStornoLines, "UTF-8");
+var returnStornoAnalysis = SalesReportAnalysis.Build(returnStornoDocument.Records);
+var returnStorno = returnStornoAnalysis.Documents.Single();
+Assert(returnStorno.Status == "Нефинансово закрыт" && returnStorno.ItemsAmount == -60m &&
+       returnStorno.Quantity == 0m && returnStornoAnalysis.Overview.Returns == 60m,
+    "Сторно в возврате должно иметь положительный знак, а №58 — завершать документ без требования оплаты.");
+
+var openDocumentLines = new[]
+{
+    "@", "1", "902",
+    SalesTransaction("1", "42", "210", "0", "1"),
+    SalesTransaction("2", "11", "210", "0", "1", "500", "1", "OPEN-SALE")
+};
+var openDocumentAnalysis = SalesReportAnalysis.Build(new FrontolFileParser()
+    .ParseLines("open-report.txt", openDocumentLines, "UTF-8").Records);
+Assert(openDocumentAnalysis.Overview.OpenDocumentCount == 1 && openDocumentAnalysis.Overview.GrossSales == 0m &&
+       openDocumentAnalysis.Products.Count == 0,
+    "Открытый документ должен оставаться в аудите, но не попадать в продажи и товары финансового отчёта.");
+
+var enterpriseLines = new[]
+{
+    "@", "DB", "903",
+    SalesTransaction("1", "42", "300", "0", "1", enterprise: "1"),
+    SalesTransaction("2", "11", "300", "0", "1", "100", "1", "A¦Товар предприятия 1", enterprise: "1"),
+    SalesTransaction("3", "40", "300", "0", "0", "100", enterprise: "1"),
+    SalesTransaction("4", "49", "300", "0", "1", "100", enterprise: "1"),
+    SalesTransaction("5", "55", "300", "0", "0", "100", enterprise: "1"),
+    SalesTransaction("6", "42", "300", "0", "1", enterprise: "2"),
+    SalesTransaction("7", "11", "300", "0", "1", "50", "1", "B¦Товар предприятия 2", enterprise: "2"),
+    SalesTransaction("8", "40", "300", "0", "0", "50", enterprise: "2"),
+    SalesTransaction("9", "49", "300", "0", "1", "50", enterprise: "2"),
+    SalesTransaction("10", "55", "300", "0", "0", "50", enterprise: "2")
+};
+var enterpriseAnalysis = SalesReportAnalysis.Build(new FrontolFileParser()
+    .ParseLines("enterprise-report.txt", enterpriseLines, "UTF-8").Records);
+Assert(enterpriseAnalysis.Documents.Count == 2 && enterpriseAnalysis.PrintGroups.Count == 2 &&
+       enterpriseAnalysis.PrintGroups.Select(group => group.EnterpriseId).Order().SequenceEqual(new[] { "1", "2" }),
+    "Одинаковый номер документа и код группы в разных предприятиях должны образовывать разные документы и разрезы 1С.");
+Assert(enterpriseAnalysis.Products.Any(product => product.ProductCode == "A" && product.ProductDisplayName == "Товар предприятия 1"),
+    "Идентификатор и наименование товара, переданные через разделитель, должны разбираться отдельно.");
+
+var kegLines = new[]
+{
+    "@", "1", "904",
+    SalesTransaction("1", "42", "400", "27", "2"),
+    SalesTransaction("2", "11", "400", "27", "2", "1200", "20", "KEG¦Пивной кег", markCode: "MARK-KEG"),
+    SalesTransaction("3", "49", "400", "27", "2", "1200"),
+    SalesTransaction("4", "55", "400", "27", "2", "1200")
+};
+var kegAnalysis = SalesReportAnalysis.Build(new FrontolFileParser()
+    .ParseLines("keg-report.txt", kegLines, "UTF-8").Records);
+Assert(kegAnalysis.Kegs.Count == 1 && kegAnalysis.Kegs[0].KegCode == "MARK-KEG" &&
+       kegAnalysis.Kegs[0].Volume == 20m && kegAnalysis.Products.Count == 0,
+    "Постановка кега должна показываться в отдельной аналитике и не смешиваться с розничными продажами.");
+
+var gapLines = new[]
+{
+    "@", "1", "905",
+    SalesTransaction("1", "42", "500", "0", "1"),
+    SalesTransaction("3", "55", "500", "0", "1", "0")
+};
+var gapAnalysis = SalesReportAnalysis.Build(new FrontolFileParser()
+    .ParseLines("gap-report.txt", gapLines, "UTF-8").Records);
+Assert(gapAnalysis.Diagnostics.Any(diagnostic => diagnostic.Category == "Диапазон транзакций" && diagnostic.Severity == "Ошибка"),
+    "Пропуск номера транзакции должен отображаться во вкладке сверки.");
+
+var shiftLines = new[]
+{
+    "@", "1", "906",
+    SalesTransaction("1", "42", "600", "0", "1"),
+    SalesTransaction("2", "11", "600", "0", "1", "100", "1", "SHIFT-SALE"),
+    SalesTransaction("3", "40", "600", "0", "0", "100"),
+    SalesTransaction("4", "49", "600", "0", "1", "100"),
+    SalesTransaction("5", "55", "600", "0", "0", "100"),
+    SalesTransaction("6", "61", "700", "10", "0", "100"),
+    SalesTransaction("7", "63", "700", "10", "0", "100")
+};
+var shiftReport = new FrontolFileParser().ParseLines("shift-report.txt", shiftLines, "UTF-8");
+var shiftAnalysis = SalesReportAnalysis.Build(shiftReport.Records,
+    [new SalesReportHistoryEntry("1", "903", 1000, 1100, "old-report.txt", DateTime.Today)]);
+var shift = shiftAnalysis.Shifts.Single();
+Assert(shift.NetSales == 100m && shift.ProgramSalesTotal == 100m && shift.HardwareSalesTotal == 100m &&
+       shift.ReconciliationText == "Сходится",
+    "Смена должна сверять документы с программным итогом №61 и аппаратным итогом №63.");
+Assert(shiftAnalysis.Diagnostics.Any(diagnostic => diagnostic.Category == "История отчётов" &&
+                                                  diagnostic.Message.Contains("904–905", StringComparison.Ordinal)),
+    "История должна предупреждать о пропущенных порядковых номерах отчётов одной базы.");
+
+foreach (var fullPath in args.Skip(1))
+{
+    var fullDocument = new FrontolFileParser().ParseFile(fullPath);
+    if (fullDocument.FileKind == ExchangeFileKind.SalesReportFromFrontol)
+    {
+        var unknownTransactionTypes = fullDocument.Records
+            .Where(record => record.Kind == FrontolRecordKind.Data && record.Definition is null)
+            .Select(record => record.CommandName)
+            .Distinct()
+            .ToArray();
+        Assert(unknownTransactionTypes.Length == 0,
+            $"В полном отчёте остались неизвестные транзакции: {string.Join(", ", unknownTransactionTypes)}");
+        Assert(fullDocument.ErrorCount == 0,
+            $"Полный отчёт о продажах должен разбираться без ошибок: {fullDocument.ErrorCount}.");
+        var fullAnalysis = SalesReportAnalysis.Build(fullDocument.Records);
+        Assert(fullAnalysis.Documents.Count > 0 && fullAnalysis.DocumentationExamples.Count == FrontolSalesDocumentationCatalog.All.Count,
+            "Полный отчёт должен собираться в документы и сохранять всю справку руководства.");
+        Console.WriteLine($"Полный отчёт: строк {fullDocument.Records.Count:N0}; транзакций {fullDocument.DataRecordCount:N0}; документов {fullAnalysis.Documents.Count:N0}; групп печати {fullAnalysis.PrintGroups.Count:N0}; итог {fullAnalysis.Overview.NetSales:N2}; незавершённых {fullAnalysis.Overview.OpenDocumentCount}; диагностик {fullAnalysis.Diagnostics.Count}; ошибок {fullDocument.ErrorCount}; предупреждений {fullDocument.WarningCount}.");
+        continue;
+    }
+
     var unknownFullCommands = fullDocument.Records
         .Where(record => record.Kind == FrontolRecordKind.Command && record.Definition is null)
         .Select(record => record.CommandName)
@@ -204,7 +422,7 @@ if (args.Length == 2)
         $"В полном файле остались неизвестные команды: {string.Join(", ", unknownFullCommands)}");
     Assert(fullDocument.ErrorCount == 0 && fullDocument.WarningCount == 0,
         $"Полный файл должен разбираться без ошибок и предупреждений: {fullDocument.ErrorCount}/{fullDocument.WarningCount}");
-    Console.WriteLine($"Полный файл: строк {fullDocument.Records.Count:N0}; ошибок {fullDocument.ErrorCount}; предупреждений {fullDocument.WarningCount}.");
+    Console.WriteLine($"Полный файл загрузки: строк {fullDocument.Records.Count:N0}; ошибок {fullDocument.ErrorCount}; предупреждений {fullDocument.WarningCount}.");
 }
 
 Console.WriteLine("Smoke-тесты пройдены.");
@@ -220,6 +438,51 @@ static void Assert(bool condition, string message)
         Console.Error.WriteLine($"ОШИБК SMOKE-ТЕСТА: {message}");
         Environment.Exit(1);
     }
+}
+
+static string SalesTransaction(
+    string transactionNumber,
+    string transactionType,
+    string documentNumber,
+    string operationCode,
+    string printGroupCode,
+    string amount = "0",
+    string quantity = "0",
+    string productCode = "",
+    string enterprise = "1",
+    string markCode = "")
+{
+    var fields = new string[44];
+    Array.Fill(fields, string.Empty);
+    fields[0] = transactionNumber;
+    fields[1] = "01.08.2026";
+    fields[2] = "12:00:00";
+    fields[3] = transactionType;
+    fields[4] = "1";
+    fields[5] = documentNumber;
+    fields[6] = "7";
+    fields[7] = productCode;
+    fields[8] = transactionType is "32" or "33" or "34" or "36" or "40" or "43" or "82" or "83" or "84" or "86"
+        ? "PAY"
+        : string.Empty;
+    fields[9] = transactionType switch
+    {
+        "36" or "86" => "6",
+        "32" or "33" or "34" or "40" or "43" or "82" or "83" or "84" => "0",
+        _ => amount
+    };
+    fields[10] = quantity;
+    fields[11] = amount;
+    fields[12] = operationCode;
+    fields[13] = "10";
+    fields[15] = amount;
+    fields[16] = printGroupCode;
+    fields[22] = operationCode == "1" ? "2" : "1";
+    fields[25] = $"1/10/{documentNumber}";
+    fields[26] = enterprise;
+    fields[31] = "0";
+    fields[32] = markCode;
+    return string.Join(';', fields) + ";";
 }
 
 sealed class InlineProgress<T>(Action<T> report) : IProgress<T>

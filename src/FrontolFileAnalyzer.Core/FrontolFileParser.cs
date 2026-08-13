@@ -45,6 +45,11 @@ public sealed class FrontolFileParser
         ArgumentException.ThrowIfNullOrWhiteSpace(filePath);
         ArgumentNullException.ThrowIfNull(lines);
 
+        if (LooksLikeSalesReport(lines))
+        {
+            return ParseSalesReportLines(filePath, lines, encodingName, progress);
+        }
+
         var records = new List<ParsedRecord>(lines.Count);
         string? currentCommand = null;
 
@@ -102,8 +107,278 @@ public sealed class FrontolFileParser
         {
             FilePath = Path.GetFullPath(filePath),
             EncodingName = encodingName,
-            Records = records
+            Records = records,
+            FileKind = ExchangeFileKind.UploadToFrontol
         };
+    }
+
+    private static bool LooksLikeSalesReport(IReadOnlyList<string> lines)
+    {
+        if (lines.Count < 3)
+        {
+            return false;
+        }
+
+        var marker = lines[0].Trim();
+        if (marker == "@")
+        {
+            return true;
+        }
+
+        if (marker != "#" || !long.TryParse(lines[2].Trim(), NumberStyles.Integer, CultureInfo.InvariantCulture, out _))
+        {
+            return false;
+        }
+
+        var firstTransaction = lines.Skip(3).FirstOrDefault(line => !string.IsNullOrWhiteSpace(line));
+        if (firstTransaction is null)
+        {
+            return true;
+        }
+
+        var values = firstTransaction.Split(';', StringSplitOptions.None);
+        return values.Length >= 4 && long.TryParse(values[0], NumberStyles.Integer, CultureInfo.InvariantCulture, out _) &&
+               long.TryParse(values[3], NumberStyles.Integer, CultureInfo.InvariantCulture, out _);
+    }
+
+    private static AnalysisDocument ParseSalesReportLines(
+        string filePath,
+        IReadOnlyList<string> lines,
+        string encodingName,
+        IProgress<FrontolParseProgress>? progress)
+    {
+        var records = new List<ParsedRecord>(lines.Count);
+        progress?.Report(new FrontolParseProgress(0, lines.Count, "Разбор отчёта о продажах"));
+
+        for (var index = 0; index < lines.Count; index++)
+        {
+            var rawLine = lines[index];
+            var lineNumber = index + 1;
+            if (index < 3)
+            {
+                records.Add(SalesHeaderRecord(lineNumber, rawLine));
+            }
+            else if (string.IsNullOrWhiteSpace(rawLine))
+            {
+                records.Add(new ParsedRecord
+                {
+                    LineNumber = lineNumber,
+                    Kind = FrontolRecordKind.Empty,
+                    RawText = rawLine,
+                    Title = "Пустая строка",
+                    Summary = "Разделитель или пустая строка отчёта",
+                    FileKind = ExchangeFileKind.SalesReportFromFrontol
+                });
+            }
+            else if (rawLine.TrimStart().StartsWith("//", StringComparison.Ordinal))
+            {
+                records.Add(new ParsedRecord
+                {
+                    LineNumber = lineNumber,
+                    Kind = FrontolRecordKind.Comment,
+                    RawText = rawLine,
+                    Title = "Комментарий",
+                    Summary = rawLine.Trim(),
+                    FileKind = ExchangeFileKind.SalesReportFromFrontol
+                });
+            }
+            else
+            {
+                records.Add(SalesTransactionRecord(lineNumber, rawLine));
+            }
+
+            ReportProgress(progress, index, lines.Count);
+        }
+
+        progress?.Report(new FrontolParseProgress(lines.Count, lines.Count, "Отчёт о продажах разобран"));
+        return new AnalysisDocument
+        {
+            FilePath = Path.GetFullPath(filePath),
+            EncodingName = encodingName,
+            Records = records,
+            FileKind = ExchangeFileKind.SalesReportFromFrontol
+        };
+    }
+
+    private static ParsedRecord SalesHeaderRecord(int lineNumber, string rawLine)
+    {
+        var (title, name, dataType, purpose, values, interpreter) = lineNumber switch
+        {
+            1 => (
+                "Признак обработки файла",
+                "Признак обработки",
+                "Строка 1",
+                "«#» - файл ещё ожидает обработки учётной системой; после успешной обработки символ нужно заменить на «@».",
+                (IReadOnlyDictionary<string, string>?)new Dictionary<string, string>(StringComparer.Ordinal)
+                {
+                    ["#"] = "Ожидает обработки учётной системой",
+                    ["@"] = "Уже обработан учётной системой"
+                },
+                (Func<string, string?>?)null),
+            2 => (
+                "Идентификатор базы Frontol",
+                "Идентификатор БД",
+                "Строка",
+                "Идентификатор базы данных из настройки Frontol «База данных / Идентификатор БД».",
+                null,
+                null),
+            _ => (
+                "Порядковый номер отчёта",
+                "Номер отчёта",
+                "Целое",
+                "Увеличивается при формировании нового файла в исходящем канале и помогает контролировать последовательность отчётов.",
+                null,
+                null)
+        };
+
+        var definition = new FieldDefinition(1, name, true, dataType, purpose, Values: values, CustomInterpreter: interpreter);
+        var (severity, diagnostic) = Validate(definition, rawLine.Trim());
+        var issues = severity == IssueSeverity.None
+            ? Array.Empty<AnalysisIssue>()
+            : [new AnalysisIssue(severity, $"{name}: {diagnostic}")];
+        var headerDefinition = new CommandDefinition(
+            $"REPORT_HEADER_{lineNumber}",
+            title,
+            purpose,
+            "Руководство интегратора Frontol 6, раздел 17.2.2, стр. 272",
+            [definition],
+            SyntaxPrefix: string.Empty,
+            Category: "0|Структура файла");
+
+        return new ParsedRecord
+        {
+            LineNumber = lineNumber,
+            Kind = FrontolRecordKind.Header,
+            RawText = rawLine,
+            Title = title,
+            Summary = Interpret(definition, rawLine.Trim()),
+            Definition = headerDefinition,
+            Fields =
+            [
+                new AnalyzedField
+                {
+                    Number = 1,
+                    Name = definition.Name,
+                    RawValue = rawLine,
+                    WasProvided = true,
+                    Interpretation = Interpret(definition, rawLine.Trim()),
+                    Required = true,
+                    DataType = definition.DataType,
+                    Purpose = definition.Purpose,
+                    Severity = severity,
+                    Diagnostic = diagnostic
+                }
+            ],
+            FieldCount = 1,
+            FieldSeverity = severity,
+            Issues = issues,
+            FileKind = ExchangeFileKind.SalesReportFromFrontol
+        };
+    }
+
+    private static ParsedRecord SalesTransactionRecord(int lineNumber, string rawLine)
+    {
+        var hasTerminatingDelimiter = rawLine.EndsWith(';');
+        var splitValues = rawLine.Split(';', StringSplitOptions.None);
+        IReadOnlyList<string> values = hasTerminatingDelimiter && splitValues.Length > 0
+            ? splitValues[..^1]
+            : splitValues;
+
+        if (values.Count < 4)
+        {
+            return new ParsedRecord
+            {
+                LineNumber = lineNumber,
+                Kind = FrontolRecordKind.Data,
+                RawText = rawLine,
+                Title = "Нераспознанная строка выгрузки",
+                Summary = $"Передано полей: {values.Count}; для определения транзакции требуется поле №4",
+                RawValues = values,
+                FieldCount = values.Count,
+                FieldSeverity = IssueSeverity.Error,
+                FieldFactory = () => BuildGenericFields(values),
+                Issues = [new AnalysisIssue(IssueSeverity.Error, "В строке отсутствует обязательное поле №4 «Тип транзакции».")],
+                FileKind = ExchangeFileKind.SalesReportFromFrontol,
+                HasTerminatingDelimiter = hasTerminatingDelimiter
+            };
+        }
+
+        var transactionCode = values[3].Trim();
+        if (!FrontolSalesTransactionCatalog.TryGet(transactionCode, out var definition))
+        {
+            return new ParsedRecord
+            {
+                LineNumber = lineNumber,
+                Kind = FrontolRecordKind.Data,
+                RawText = rawLine,
+                CommandName = transactionCode,
+                Title = $"Транзакция №{transactionCode}",
+                Summary = $"Неизвестный тип · передано полей: {values.Count}",
+                RawValues = values,
+                FieldCount = values.Count,
+                FieldSeverity = IssueSeverity.Warning,
+                FieldFactory = () => BuildGenericFields(values),
+                Issues = [new AnalysisIssue(IssueSeverity.Warning, $"Тип транзакции №{transactionCode} отсутствует в разделе 17.2.2.1 текущего руководства Frontol 6.")],
+                FileKind = ExchangeFileKind.SalesReportFromFrontol,
+                HasTerminatingDelimiter = hasTerminatingDelimiter
+            };
+        }
+
+        var fieldDefinitions = definition.Fields;
+        var fieldCount = Math.Max(values.Count, fieldDefinitions.Count);
+        var issues = new List<AnalysisIssue>();
+        var fieldSeverity = IssueSeverity.None;
+        for (var index = 0; index < fieldCount; index++)
+        {
+            var number = index + 1;
+            var rawValue = index < values.Count ? values[index] : string.Empty;
+            if (index >= fieldDefinitions.Count)
+            {
+                fieldSeverity = MaxSeverity(fieldSeverity, IssueSeverity.Error);
+                issues.Add(new AnalysisIssue(IssueSeverity.Error, $"Поле {number}: формат выгрузки Frontol предусматривает не более {fieldDefinitions.Count} полей."));
+                continue;
+            }
+
+            var (severity, diagnostic) = Validate(fieldDefinitions[index], rawValue);
+            if (severity != IssueSeverity.None)
+            {
+                fieldSeverity = MaxSeverity(fieldSeverity, severity);
+                issues.Add(new AnalysisIssue(severity, $"Поле {number} «{fieldDefinitions[index].Name}»: {diagnostic}"));
+            }
+        }
+
+        return new ParsedRecord
+        {
+            LineNumber = lineNumber,
+            Kind = FrontolRecordKind.Data,
+            RawText = rawLine,
+            CommandName = definition.Name,
+            Definition = definition,
+            Title = $"Транзакция №{definition.Name} · {definition.DisplayName}",
+            Summary = BuildSalesSummary(definition, values, hasTerminatingDelimiter),
+            RawValues = values,
+            FieldCount = fieldCount,
+            FieldSeverity = fieldSeverity,
+            FieldFactory = () => BuildKnownFields(values, fieldDefinitions),
+            Issues = issues,
+            FileKind = ExchangeFileKind.SalesReportFromFrontol,
+            HasTerminatingDelimiter = hasTerminatingDelimiter
+        };
+    }
+
+    private static string BuildSalesSummary(
+        CommandDefinition definition,
+        IReadOnlyList<string> values,
+        bool hasTerminatingDelimiter)
+    {
+        string Get(int number) => number <= values.Count ? values[number - 1] : string.Empty;
+        var document = string.IsNullOrWhiteSpace(Get(6)) ? "без номера документа" : $"документ {Get(6)}";
+        var when = string.Join(' ', new[] { Get(2), Get(3) }.Where(value => !string.IsNullOrWhiteSpace(value)));
+        var payload = FrontolSalesTransactionCatalog.IsProductTransaction(definition.Name)
+            ? $"товар {EmptyAs(Get(8), "по свободной цене")} · количество {EmptyAs(Get(11), "не указано")}"
+            : definition.DisplayName;
+        var delimiter = hasTerminatingDelimiter ? "есть" : "нет";
+        return $"{document} · {when} · {payload} · полей: {values.Count}/{definition.Fields.Count} · завершающий ;: {delimiter}";
     }
 
     private static void ReportProgress(IProgress<FrontolParseProgress>? progress, int index, int total)
@@ -344,6 +619,13 @@ public sealed class FrontolFileParser
             !DateTime.TryParse(rawValue, RussianCulture, DateTimeStyles.None, out _))
         {
             return (IssueSeverity.Error, "ожидалась дата");
+        }
+
+        if (!dataType.Contains("Дата", StringComparison.OrdinalIgnoreCase) &&
+            dataType.Contains("Время", StringComparison.OrdinalIgnoreCase) &&
+            !DateTime.TryParse(rawValue, RussianCulture, DateTimeStyles.None, out _))
+        {
+            return (IssueSeverity.Error, "ожидалось время");
         }
 
         if (definition.Values is not null &&

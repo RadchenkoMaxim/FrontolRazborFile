@@ -35,6 +35,11 @@
             <Setter Property="Stroke" Value="{DynamicResource PrimaryBrush}" /><Setter Property="Fill" Value="Transparent" />
             <Setter Property="Margin" Value="0,0,6,0" />
         </Style>
+        <Style x:Key="WrappingCellTextStyle" TargetType="TextBlock">
+            <Setter Property="TextWrapping" Value="Wrap" />
+            <Setter Property="VerticalAlignment" Value="Center" />
+            <Setter Property="Padding" Value="3" />
+        </Style>
         <Style TargetType="Window">
             <Setter Property="FontFamily" Value="Segoe UI" />
             <Setter Property="FontSize" Value="12" />

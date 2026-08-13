@@ -1,5 +1,6 @@
 using System.Text.Json;
 using System.IO;
+using FrontolFileAnalyzer.Core;
 
 namespace FrontolFileAnalyzer;
 
@@ -12,6 +13,7 @@ internal sealed class AnalyzerSettings
     public bool RecordColumnsInitialized { get; set; }
     public double RecordsPaneWidth { get; set; } = 655;
     public List<string> RecentFiles { get; set; } = [];
+    public List<SalesReportHistoryEntry> SalesReportHistory { get; set; } = [];
 }
 
 internal sealed class AppSettingsStore

@@ -28,12 +28,15 @@
 
         <Menu Grid.Row="0" Background="#F7F7F7" BorderBrush="#D2D2D2" BorderThickness="0,0,0,1">
             <MenuItem Header="_Файл">
-                <MenuItem Header="_Выбрать и проанализировать..." InputGestureText="Ctrl+O" Click="OpenFile_Click" IsEnabled="{Binding CanStartLoad}" />
+                <MenuItem Header="_Определить формат автоматически..." InputGestureText="Ctrl+O" Click="OpenFile_Click" IsEnabled="{Binding CanStartLoad}" />
+                <MenuItem Header="Файл _загрузки в Frontol..." Click="OpenUploadFile_Click" IsEnabled="{Binding CanStartLoad}" />
+                <MenuItem Header="_Отчёт о продажах из Frontol..." Click="OpenSalesReport_Click" IsEnabled="{Binding CanStartLoad}" />
+                <Separator />
                 <MenuItem Header="_Сохранить" InputGestureText="Ctrl+S" Click="SaveFile_Click" IsEnabled="{Binding CanSaveChanges}" />
                 <MenuItem Header="Сохранить _как..." InputGestureText="Ctrl+Shift+S" Click="SaveFileAs_Click" IsEnabled="{Binding CanSaveFile}" />
                 <Separator />
                 <MenuItem Header="_Экспорт видимых строк..." Click="Export_Click" IsEnabled="{Binding HasLoadedRecords}" />
-                <MenuItem Header="С_равнить с файлом..." Click="Compare_Click" IsEnabled="{Binding HasLoadedRecords}" />
+                <MenuItem Header="С_равнить с файлом..." Click="Compare_Click" IsEnabled="{Binding CanUseUploadTools}" />
                 <MenuItem Header="_Последние файлы" x:Name="RecentFilesMenu" />
                 <Separator />
                 <MenuItem Header="Открыть _исходный файл" Click="OpenSourceFile_Click" IsEnabled="{Binding CanOpenCurrentFile}" />
@@ -45,10 +48,10 @@
                 <MenuItem Header="Изменить выбранное поле..." InputGestureText="F2"
                           Click="EditField_Click" IsEnabled="{Binding CanEditSelectedField}" />
                 <MenuItem Header="Расширенное редактирование строки..." Click="EditRawLine_Click"
-                          IsEnabled="{Binding HasLoadedRecords}" />
+                          IsEnabled="{Binding CanEditRawLine}" />
                 <Separator />
                 <MenuItem Header="Массово изменить вид маркировки..." InputGestureText="Ctrl+Shift+M"
-                          Click="BulkEditMarking_Click" IsEnabled="{Binding HasLoadedRecords}" />
+                          Click="BulkEditMarking_Click" IsEnabled="{Binding CanUseUploadTools}" />
             </MenuItem>
             <MenuItem Header="_Вид">
                 <MenuItem Header="Скрыть / показать список строк" InputGestureText="Ctrl+M" Click="ToggleRecordsPane_Click" />
@@ -62,6 +65,7 @@
             </MenuItem>
             <MenuItem Header="_Справка">
                 <MenuItem Header="Команды и поля загрузки" Click="CommandReference_Click" />
+                <MenuItem Header="Транзакции и поля отчёта о продажах" Click="SalesReference_Click" />
                 <MenuItem Header="Коды номенклатуры и маркировки" Click="MarkingCodes_Click" />
                 <Separator />
                 <MenuItem Header="О программе" Click="About_Click" />
@@ -79,15 +83,15 @@
                 <Button Click="Export_Click" IsEnabled="{Binding HasLoadedRecords}" ToolTip="Экспортировать строки, оставшиеся после фильтра">
                     <StackPanel Orientation="Horizontal"><Path Style="{StaticResource ToolbarIcon}" Data="{StaticResource IconExport}" /><TextBlock Text="Экспорт" /></StackPanel>
                 </Button>
-                <Button Click="Compare_Click" IsEnabled="{Binding HasLoadedRecords}" ToolTip="Сравнить товары с другим файлом">
+                <Button Click="Compare_Click" IsEnabled="{Binding CanUseUploadTools}" ToolTip="Сравнить товары двух файлов загрузки">
                     <StackPanel Orientation="Horizontal"><Path Style="{StaticResource ToolbarIcon}" Data="{StaticResource IconCompare}" /><TextBlock Text="Сравнить" /></StackPanel>
                 </Button>
-                <Button Click="BulkEditMarking_Click" IsEnabled="{Binding HasLoadedRecords}"
+                <Button Click="BulkEditMarking_Click" IsEnabled="{Binding CanUseUploadTools}"
                         ToolTip="Массово заменить вид маркировки у выбранных групп">
                     <StackPanel Orientation="Horizontal"><Path Style="{StaticResource ToolbarIcon}" Stroke="{StaticResource MarkingBrush}" Data="{StaticResource IconMarking}" /><TextBlock Text="Маркировка" /></StackPanel>
                 </Button>
                 <Separator />
-                <Button Click="CommandReference_Click" ToolTip="Справочник команд и полей">
+                <Button x:Name="CurrentReferenceButton" Click="CurrentReference_Click" ToolTip="Справочник команд и полей">
                     <StackPanel Orientation="Horizontal"><Path Style="{StaticResource ToolbarIcon}" Data="{StaticResource IconHelp}" /><TextBlock Text="Справка" /></StackPanel>
                 </Button>
                 <Button Click="ConfigureRecordColumns_Click" ToolTip="Показать или скрыть колонки списка"><StackPanel Orientation="Horizontal"><Path Style="{StaticResource ToolbarIcon}" Data="{StaticResource IconColumns}" /><TextBlock Text="Колонки" /></StackPanel></Button>
@@ -115,6 +119,8 @@
                     <TextBlock Text="{Binding EncodingLabel}" />
                     <Border Margin="14,0" BorderBrush="#BFBFBF" BorderThickness="1,0,0,0" />
                     <TextBlock Text="{Binding ProblemCountLabel}" />
+                    <Border Margin="14,0" BorderBrush="#BFBFBF" BorderThickness="1,0,0,0" />
+                    <TextBlock FontWeight="SemiBold" Foreground="{StaticResource PrimaryBrush}" Text="{Binding FileKindLabel}" />
                 </StackPanel>
                 <Grid Grid.Row="1" Margin="0,7,0,0" IsEnabled="{Binding HasLoadedRecords}">
                     <Grid.ColumnDefinitions>
@@ -133,13 +139,13 @@
                         <TextBlock Margin="0,0,0,2" Foreground="{StaticResource MutedTextBrush}" FontSize="11" Text="Раздел" />
                         <ComboBox x:Name="SectionFilterBox" SelectedIndex="0" SelectionChanged="Filter_SelectionChanged">
                         <ComboBoxItem Content="Все разделы" />
-                        <ComboBoxItem Content="Товары" />
-                        <ComboBoxItem Content="Служебные" />
+                        <ComboBoxItem x:Name="ProductSectionFilter" Content="Товары" />
+                        <ComboBoxItem x:Name="ServiceSectionFilter" Content="Служебные" />
                         <ComboBoxItem Content="Структура файла" />
                         </ComboBox>
                     </StackPanel>
                     <StackPanel Grid.Column="2" Margin="0,0,8,0">
-                        <TextBlock Margin="0,0,0,2" Foreground="{StaticResource MutedTextBrush}" FontSize="11" Text="Команда" />
+                        <TextBlock x:Name="CommandFilterCaption" Margin="0,0,0,2" Foreground="{StaticResource MutedTextBrush}" FontSize="11" Text="Команда" />
                         <ComboBox MaxDropDownHeight="430" ItemsSource="{Binding CommandFilters}"
                                   SelectedItem="{Binding SelectedCommandFilter, Mode=TwoWay}"
                                   ToolTip="{Binding SelectedItem.Description, RelativeSource={RelativeSource Self}}">
@@ -186,7 +192,380 @@
             </Grid>
         </Border>
 
-        <Grid Grid.Row="4" Margin="6">
+        <TabControl x:Name="WorkspaceTabs" Grid.Row="4" Margin="6" Padding="2">
+            <TabItem x:Name="SalesOverviewTab" Header="Обзор">
+                <ScrollViewer VerticalScrollBarVisibility="Auto">
+                    <StackPanel Margin="10">
+                        <Border Padding="12,9" Background="#EEF5FB" BorderBrush="#BCD2E4" BorderThickness="1" CornerRadius="4">
+                            <Grid>
+                                <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+                                <StackPanel>
+                                    <TextBlock FontSize="18" FontWeight="SemiBold" Text="Понятный отчёт о продажах" />
+                                    <TextBlock Margin="0,3,0,0" Foreground="{StaticResource MutedTextBrush}" Text="{Binding SalesReport.Overview.PeriodText}" />
+                                </StackPanel>
+                                <StackPanel Grid.Column="1" MaxWidth="560" VerticalAlignment="Center">
+                                    <TextBlock TextAlignment="Right" TextWrapping="Wrap" Foreground="{StaticResource MutedTextBrush}"
+                                               Text="Итоги собраны только из завершённых продаж и возвратов. Незавершённые и служебные документы показаны отдельно." />
+                                    <StackPanel Margin="0,3,0,0" HorizontalAlignment="Right" Orientation="Horizontal">
+                                        <TextBlock Foreground="{StaticResource MutedTextBrush}" Text="БД: " /><TextBlock FontWeight="SemiBold" Text="{Binding SalesReport.Overview.DatabaseId}" />
+                                        <TextBlock Margin="10,0,0,0" Foreground="{StaticResource MutedTextBrush}" Text="Отчёт: " /><TextBlock FontWeight="SemiBold" Text="{Binding SalesReport.Overview.ReportNumber}" />
+                                    </StackPanel>
+                                </StackPanel>
+                            </Grid>
+                        </Border>
+                        <UniformGrid Margin="0,10,0,0" Rows="2" Columns="4">
+                            <Border Margin="4" Padding="12,9" Background="White" BorderBrush="#D8E0E8" BorderThickness="1" CornerRadius="4">
+                                <StackPanel><TextBlock Foreground="{StaticResource MutedTextBrush}" Text="Продажи" /><TextBlock FontSize="23" FontWeight="SemiBold" Text="{Binding SalesReport.Overview.GrossSales, StringFormat={}{0:N2}}" /><TextBlock Foreground="{StaticResource MutedTextBrush}" Text="{Binding SalesReport.Overview.SalesDocumentCount, StringFormat=документов: {0:N0}}" /></StackPanel>
+                            </Border>
+                            <Border Margin="4" Padding="12,9" Background="White" BorderBrush="#E5D2D2" BorderThickness="1" CornerRadius="4">
+                                <StackPanel><TextBlock Foreground="{StaticResource MutedTextBrush}" Text="Возвраты" /><TextBlock FontSize="23" FontWeight="SemiBold" Foreground="{StaticResource ErrorBrush}" Text="{Binding SalesReport.Overview.Returns, StringFormat={}{0:N2}}" /><TextBlock Foreground="{StaticResource MutedTextBrush}" Text="{Binding SalesReport.Overview.ReturnDocumentCount, StringFormat=документов: {0:N0}}" /></StackPanel>
+                            </Border>
+                            <Border Margin="4" Padding="12,9" Background="#F1F8F3" BorderBrush="#C8DDCE" BorderThickness="1" CornerRadius="4">
+                                <StackPanel><TextBlock Foreground="{StaticResource MutedTextBrush}" Text="Итог продаж" /><TextBlock FontSize="23" FontWeight="Bold" Foreground="{StaticResource MarkingBrush}" Text="{Binding SalesReport.Overview.NetSales, StringFormat={}{0:N2}}" /><TextBlock Foreground="{StaticResource MutedTextBrush}" Text="Продажи минус возвраты" /></StackPanel>
+                            </Border>
+                            <Border Margin="4" Padding="12,9" Background="White" BorderBrush="#D8E0E8" BorderThickness="1" CornerRadius="4">
+                                <StackPanel><TextBlock Foreground="{StaticResource MutedTextBrush}" Text="Средний документ продажи" /><TextBlock FontSize="23" FontWeight="SemiBold" Text="{Binding SalesReport.Overview.AverageDocument, StringFormat={}{0:N2}}" /><TextBlock Foreground="{StaticResource MutedTextBrush}" Text="По закрытым продажам" /></StackPanel>
+                            </Border>
+                            <Border Margin="4" Padding="12,9" Background="White" BorderBrush="#D8E0E8" BorderThickness="1" CornerRadius="4">
+                                <StackPanel><TextBlock Foreground="{StaticResource MutedTextBrush}" Text="Документы" /><TextBlock FontSize="23" FontWeight="SemiBold" Text="{Binding SalesReport.Overview.DocumentCount, StringFormat={}{0:N0}}" /><TextBlock Foreground="{StaticResource MutedTextBrush}" Text="{Binding SalesReport.Overview.OpenDocumentCount, StringFormat=незавершено: {0:N0}}" /></StackPanel>
+                            </Border>
+                            <Border Margin="4" Padding="12,9" Background="White" BorderBrush="#D8E0E8" BorderThickness="1" CornerRadius="4">
+                                <StackPanel><TextBlock Foreground="{StaticResource MutedTextBrush}" Text="Товарные строки" /><TextBlock FontSize="23" FontWeight="SemiBold" Text="{Binding SalesReport.Overview.ProductLineCount, StringFormat={}{0:N0}}" /><TextBlock Foreground="{StaticResource MutedTextBrush}" Text="{Binding SalesReport.Overview.UniqueProductCount, StringFormat=товаров: {0:N0}}" /></StackPanel>
+                            </Border>
+                            <Border Margin="4" Padding="12,9" Background="White" BorderBrush="#D8E0E8" BorderThickness="1" CornerRadius="4">
+                                <StackPanel><TextBlock Foreground="{StaticResource MutedTextBrush}" Text="Количество товара" /><TextBlock FontSize="23" FontWeight="SemiBold" Text="{Binding SalesReport.Overview.Quantity, StringFormat={}{0:N3}}" /><TextBlock Foreground="{StaticResource MutedTextBrush}" Text="С учётом сторно и возвратов" /></StackPanel>
+                            </Border>
+                            <Border Margin="4" Padding="12,9" Background="White" BorderBrush="#D8E0E8" BorderThickness="1" CornerRadius="4">
+                                <StackPanel><TextBlock Foreground="{StaticResource MutedTextBrush}" Text="Предприятия / группы" /><TextBlock FontSize="23" FontWeight="SemiBold" Text="{Binding SalesReport.Overview.PrintGroupCount, StringFormat={}{0:N0}}" /><TextBlock Foreground="{StaticResource MutedTextBrush}" Text="{Binding SalesReport.Overview.EnterpriseCount, StringFormat=предприятий: {0:N0}}" /></StackPanel>
+                            </Border>
+                        </UniformGrid>
+                        <GroupBox Margin="4,10,4,0" Header="Смены в отчёте" Padding="5">
+                            <DataGrid ItemsSource="{Binding SalesReport.Shifts}" AutoGenerateColumns="False" IsReadOnly="True" CanUserAddRows="False" HeadersVisibility="Column" GridLinesVisibility="Horizontal" RowHeaderWidth="0" MaxHeight="260">
+                                <DataGrid.Columns>
+                                    <DataGridTextColumn Header="Предприятие" Binding="{Binding EnterpriseId}" Width="90" />
+                                    <DataGridTextColumn Header="РМ" Binding="{Binding Workstation}" Width="70" />
+                                    <DataGridTextColumn Header="Смена" Binding="{Binding ShiftNumber}" Width="75" />
+                                    <DataGridTextColumn Header="Открыта" Binding="{Binding OpenedText}" Width="140" />
+                                    <DataGridTextColumn Header="Закрыта" Binding="{Binding ClosedText}" Width="140" />
+                                    <DataGridTextColumn Header="Состояние" Binding="{Binding Status}" Width="190" />
+                                    <DataGridTextColumn Header="Документов" Binding="{Binding DocumentCount, StringFormat={}{0:N0}}" Width="90" />
+                                    <DataGridTextColumn Header="Возвратов" Binding="{Binding ReturnDocumentCount, StringFormat={}{0:N0}}" Width="80" />
+                                    <DataGridTextColumn Header="По документам" Binding="{Binding NetSales, StringFormat={}{0:N2}}" Width="110" />
+                                    <DataGridTextColumn Header="№61" Binding="{Binding ProgramSalesText}" Width="100" />
+                                    <DataGridTextColumn Header="№63" Binding="{Binding HardwareSalesText}" Width="100" />
+                                    <DataGridTextColumn Header="Сверка" Binding="{Binding ReconciliationText}" Width="115" />
+                                    <DataGridTextColumn Header="Транзакций" Binding="{Binding TransactionCount, StringFormat={}{0:N0}}" Width="95" />
+                                </DataGrid.Columns>
+                            </DataGrid>
+                        </GroupBox>
+                    </StackPanel>
+                </ScrollViewer>
+            </TabItem>
+
+            <TabItem x:Name="SalesDocumentsTab" Header="Документы / 1С">
+                <Grid Margin="7">
+                    <Grid.ColumnDefinitions><ColumnDefinition Width="0.9*" MinWidth="330" /><ColumnDefinition Width="6" /><ColumnDefinition Width="1.35*" MinWidth="430" /></Grid.ColumnDefinitions>
+                    <GroupBox Header="Чеки и документы Frontol" Padding="4">
+                        <DataGrid x:Name="SalesDocumentsGrid" ItemsSource="{Binding SalesReport.Documents}" SelectedItem="{Binding SelectedSalesDocument, Mode=TwoWay}"
+                                  AutoGenerateColumns="False" IsReadOnly="True" CanUserAddRows="False" HeadersVisibility="Column" GridLinesVisibility="Horizontal" RowHeaderWidth="0">
+                            <DataGrid.Columns>
+                                <DataGridTextColumn Header="Дата" Binding="{Binding DateText}" Width="125" />
+                                <DataGridTextColumn Header="Предпр." Binding="{Binding EnterpriseId}" Width="65" />
+                                <DataGridTextColumn Header="№" Binding="{Binding DisplayNumber}" Width="80" />
+                                <DataGridTextColumn Header="Операция" Binding="{Binding OperationName}" Width="*" />
+                                <DataGridTextColumn Header="Поз." Binding="{Binding ItemCount}" Width="48" />
+                                <DataGridTextColumn Header="Итог" Binding="{Binding Total, StringFormat={}{0:N2}}" Width="88" />
+                                <DataGridTextColumn Header="Состояние" Binding="{Binding Status}" Width="105" />
+                            </DataGrid.Columns>
+                        </DataGrid>
+                    </GroupBox>
+                    <GridSplitter Grid.Column="1" Width="6" HorizontalAlignment="Stretch" Background="{StaticResource DividerBrush}" />
+                    <Grid Grid.Column="2" DataContext="{Binding SelectedSalesDocument}">
+                        <Grid.RowDefinitions><RowDefinition Height="Auto" /><RowDefinition Height="Auto" /><RowDefinition Height="*" /></Grid.RowDefinitions>
+                        <Border Padding="11,8" Background="#EEF5FB" BorderBrush="#BCD2E4" BorderThickness="1" CornerRadius="4">
+                            <StackPanel>
+                                <TextBlock FontSize="17" FontWeight="SemiBold" Text="{Binding OneCView, TargetNullValue=Выберите документ}" />
+                                <TextBlock Margin="0,3,0,0" Foreground="{StaticResource MutedTextBrush}" Text="Универсальное представление загрузки в 1С: шапка документа, товары, оплаты и исходные транзакции." />
+                            </StackPanel>
+                        </Border>
+                        <UniformGrid Grid.Row="1" Margin="0,7" Rows="2" Columns="5">
+                            <StackPanel Margin="4"><TextBlock Foreground="{StaticResource MutedTextBrush}" Text="Документ" /><TextBlock FontWeight="SemiBold" Text="{Binding DisplayNumber}" /></StackPanel>
+                            <StackPanel Margin="4"><TextBlock Foreground="{StaticResource MutedTextBrush}" Text="Дата" /><TextBlock FontWeight="SemiBold" Text="{Binding DateText}" /></StackPanel>
+                            <StackPanel Margin="4"><TextBlock Foreground="{StaticResource MutedTextBrush}" Text="Касса / РМ" /><TextBlock FontWeight="SemiBold" Text="{Binding Workstation}" /></StackPanel>
+                            <StackPanel Margin="4"><TextBlock Foreground="{StaticResource MutedTextBrush}" Text="Смена" /><TextBlock FontWeight="SemiBold" Text="{Binding ShiftNumber}" /></StackPanel>
+                            <StackPanel Margin="4"><TextBlock Foreground="{StaticResource MutedTextBrush}" Text="Кассир / предприятие" /><TextBlock FontWeight="SemiBold"><Run Text="{Binding Cashier}" /><Run Text=" / " /><Run Text="{Binding EnterpriseId}" /></TextBlock></StackPanel>
+                            <StackPanel Margin="4"><TextBlock Foreground="{StaticResource MutedTextBrush}" Text="Операция" /><TextBlock FontWeight="SemiBold" Text="{Binding OperationName}" /></StackPanel>
+                            <StackPanel Margin="4"><TextBlock Foreground="{StaticResource MutedTextBrush}" Text="Количество" /><TextBlock FontWeight="SemiBold" Text="{Binding Quantity, StringFormat={}{0:N3}}" /></StackPanel>
+                            <StackPanel Margin="4"><TextBlock Foreground="{StaticResource MutedTextBrush}" Text="Товары" /><TextBlock FontWeight="SemiBold" Text="{Binding ItemsAmount, StringFormat={}{0:N2}}" /></StackPanel>
+                            <StackPanel Margin="4"><TextBlock Foreground="{StaticResource MutedTextBrush}" Text="Итог" /><TextBlock FontWeight="Bold" Foreground="{StaticResource PrimaryBrush}" Text="{Binding Total, StringFormat={}{0:N2}}" /></StackPanel>
+                            <StackPanel Margin="4"><TextBlock Foreground="{StaticResource MutedTextBrush}" Text="Группы печати" /><TextBlock FontWeight="SemiBold" Text="{Binding PrintGroupsText}" TextTrimming="CharacterEllipsis" ToolTip="{Binding PrintGroupsText}" /></StackPanel>
+                        </UniformGrid>
+                        <TabControl Grid.Row="2">
+                            <TabItem Header="Для 1С по группам печати">
+                                <DataGrid ItemsSource="{Binding PrintGroups}" AutoGenerateColumns="False" IsReadOnly="True" CanUserAddRows="False" HeadersVisibility="Column" GridLinesVisibility="Horizontal" RowHeaderWidth="0">
+                                    <DataGrid.Columns>
+                                        <DataGridTextColumn Header="Предприятие" Binding="{Binding EnterpriseId}" Width="90" />
+                                        <DataGridTextColumn Header="Код ГП" Binding="{Binding PrintGroupCode}" Width="55" />
+                                        <DataGridTextColumn Header="Группа печати" Binding="{Binding PrintGroupName}" Width="120" />
+                                        <DataGridTextColumn Header="Документ 1С" Binding="{Binding OneCReport}" Width="200" />
+                                        <DataGridTextColumn Header="Позиций" Binding="{Binding ProductLineCount}" Width="55" />
+                                        <DataGridTextColumn Header="Количество" Binding="{Binding Quantity, StringFormat={}{0:N3}}" Width="75" />
+                                        <DataGridTextColumn Header="Продажи" Binding="{Binding GrossSales, StringFormat={}{0:N2}}" Width="75" />
+                                        <DataGridTextColumn Header="Возвраты" Binding="{Binding Returns, StringFormat={}{0:N2}}" Width="75" />
+                                        <DataGridTextColumn Header="Итог" Binding="{Binding NetSales, StringFormat={}{0:N2}}" Width="75" />
+                                        <DataGridTextColumn Header="Оплаты" Binding="{Binding PaymentTotal, StringFormat={}{0:N2}}" Width="100" />
+                                    </DataGrid.Columns>
+                                </DataGrid>
+                            </TabItem>
+                            <TabItem Header="Товары">
+                                <DataGrid ItemsSource="{Binding Items}" AutoGenerateColumns="False" IsReadOnly="True" CanUserAddRows="False" HeadersVisibility="Column" GridLinesVisibility="Horizontal" RowHeaderWidth="0">
+                                    <DataGrid.Columns>
+                                        <DataGridTextColumn Header="Код / идентификатор" Binding="{Binding ProductCode}" Width="115" />
+                                        <DataGridTextColumn Header="Представление" Binding="{Binding ProductDisplayName}" Width="*" />
+                                        <DataGridTextColumn Header="Код марки" Binding="{Binding MarkCode}" Width="120" />
+                                        <DataGridTextColumn Header="Штрихкод" Binding="{Binding Barcode}" Width="120" />
+                                        <DataGridTextColumn Header="Маркировка" Binding="{Binding ProductTypeName}" Width="150" />
+                                        <DataGridTextColumn Header="Код группы печати" Binding="{Binding PrintGroupCode}" Width="125" />
+                                        <DataGridTextColumn Header="Количество" Binding="{Binding Quantity, StringFormat={}{0:N3}}" Width="85" />
+                                        <DataGridTextColumn Header="Цена" Binding="{Binding Price, StringFormat={}{0:N2}}" Width="80" />
+                                        <DataGridTextColumn Header="Сумма" Binding="{Binding Amount, StringFormat={}{0:N2}}" Width="90" />
+                                    </DataGrid.Columns>
+                                </DataGrid>
+                            </TabItem>
+                            <TabItem Header="Оплаты">
+                                <DataGrid ItemsSource="{Binding Payments}" AutoGenerateColumns="False" IsReadOnly="True" CanUserAddRows="False" HeadersVisibility="Column" GridLinesVisibility="Horizontal" RowHeaderWidth="0">
+                                    <DataGrid.Columns>
+                                        <DataGridTextColumn Header="Транзакция" Binding="{Binding TransactionType, StringFormat=№{0}}" Width="90" />
+                                        <DataGridTextColumn Header="Код вида оплаты" Binding="{Binding PaymentCode}" Width="120" />
+                                        <DataGridTextColumn Header="Способ оплаты" Binding="{Binding PaymentName}" Width="*" />
+                                        <DataGridTextColumn Header="Сумма" Binding="{Binding Amount, StringFormat={}{0:N2}}" Width="110" />
+                                    </DataGrid.Columns>
+                                </DataGrid>
+                            </TabItem>
+                            <TabItem Header="Исходные транзакции">
+                                <DataGrid ItemsSource="{Binding Transactions}" AutoGenerateColumns="False" IsReadOnly="True" CanUserAddRows="False" HeadersVisibility="Column" GridLinesVisibility="Horizontal" RowHeaderWidth="0">
+                                    <DataGrid.Columns>
+                                        <DataGridTextColumn Header="Строка" Binding="{Binding LineNumber}" Width="65" />
+                                        <DataGridTextColumn Header="Транзакция" Binding="{Binding CommandText}" Width="95" />
+                                        <DataGridTextColumn Header="Назначение" Binding="{Binding Definition.DisplayName}" Width="230" />
+                                        <DataGridTextColumn Header="Содержание" Binding="{Binding Summary}" Width="*" />
+                                        <DataGridTextColumn Header="Статус" Binding="{Binding StatusText}" Width="70" />
+                                    </DataGrid.Columns>
+                                </DataGrid>
+                            </TabItem>
+                        </TabControl>
+                    </Grid>
+                </Grid>
+            </TabItem>
+
+            <TabItem x:Name="SalesOrganizationsTab" Header="Предприятия / ГП">
+                <Grid Margin="8">
+                    <Grid.RowDefinitions><RowDefinition Height="Auto" /><RowDefinition Height="*" /></Grid.RowDefinitions>
+                    <Border Padding="10,7" Background="#EEF5FB" BorderBrush="#BCD2E4" BorderThickness="1" CornerRadius="4">
+                        <TextBlock TextWrapping="Wrap"><Run FontWeight="SemiBold" Text="Разделение выполняется по полю №27 «Идентификатор предприятия» и полю №17 «Код группы печати». " /><Run Text="Программа не назначает группам ИП или ООО. №49 задаёт итог группы, №43 — фискальную оплату, №82/83/84/86 — другие распределения оплат." /></TextBlock>
+                    </Border>
+                    <DataGrid Grid.Row="1" Margin="0,8,0,0" ItemsSource="{Binding SalesReport.PrintGroups}"
+                              AutoGenerateColumns="False" IsReadOnly="True" CanUserAddRows="False"
+                              HeadersVisibility="Column" GridLinesVisibility="Horizontal" RowHeaderWidth="0"
+                              RowHeight="30" ColumnHeaderHeight="30">
+                        <DataGrid.Columns>
+                            <DataGridTextColumn Header="Предприятие" Binding="{Binding EnterpriseId}" Width="100" />
+                            <DataGridTextColumn Header="Код ГП" Binding="{Binding PrintGroupCode}" Width="65" />
+                            <DataGridTextColumn Header="Группа печати" Binding="{Binding PrintGroupName}" Width="145" />
+                            <DataGridTextColumn Header="Будущий документ 1С" Binding="{Binding OneCReport}" Width="250" />
+                            <DataGridTextColumn Header="Документов" Binding="{Binding DocumentCount}" Width="90" />
+                            <DataGridTextColumn Header="Позиций" Binding="{Binding ProductLineCount}" Width="75" />
+                            <DataGridTextColumn Header="Количество" Binding="{Binding Quantity, StringFormat={}{0:N3}}" Width="95" />
+                            <DataGridTextColumn Header="Продажи" Binding="{Binding GrossSales, StringFormat={}{0:N2}}" Width="105" />
+                            <DataGridTextColumn Header="Возвраты" Binding="{Binding Returns, StringFormat={}{0:N2}}" Width="105" />
+                            <DataGridTextColumn Header="Итог" Binding="{Binding NetSales, StringFormat={}{0:N2}}" Width="105" />
+                            <DataGridTextColumn Header="Оплаты по группе" Binding="{Binding PaymentTotal, StringFormat={}{0:N2}}" Width="120" />
+                            <DataGridTextColumn Header="Сверка" Binding="{Binding BalanceText}" Width="115" />
+                            <DataGridTemplateColumn Header="Источник расчёта" Width="*">
+                                <DataGridTemplateColumn.CellTemplate>
+                                    <DataTemplate>
+                                        <TextBlock Margin="3,0" VerticalAlignment="Center"
+                                                   Text="{Binding CalculationSource}" TextTrimming="CharacterEllipsis"
+                                                   ToolTip="{Binding Explanation}" ToolTipService.ShowDuration="30000" />
+                                    </DataTemplate>
+                                </DataGridTemplateColumn.CellTemplate>
+                            </DataGridTemplateColumn>
+                        </DataGrid.Columns>
+                    </DataGrid>
+                </Grid>
+            </TabItem>
+
+            <TabItem x:Name="SalesProductsTab" Header="Товары">
+                <Grid Margin="8">
+                    <Grid.RowDefinitions><RowDefinition Height="Auto" /><RowDefinition Height="*" /></Grid.RowDefinitions>
+                    <TextBlock Margin="2,0,0,7" Foreground="{StaticResource MutedTextBrush}" Text="Если Frontol передал идентификатор вместе с наименованием через разделитель, программа показывает их отдельно. В сводку входят только завершённые продажи и возвраты." TextWrapping="Wrap" />
+                    <DataGrid Grid.Row="1" ItemsSource="{Binding SalesReport.Products}" AutoGenerateColumns="False" IsReadOnly="True" CanUserAddRows="False" HeadersVisibility="Column" GridLinesVisibility="Horizontal" RowHeaderWidth="0">
+                        <DataGrid.Columns>
+                            <DataGridTextColumn Header="Предприятие" Binding="{Binding EnterpriseId}" Width="95" />
+                            <DataGridTextColumn Header="Код / идентификатор" Binding="{Binding ProductCode}" Width="125" />
+                            <DataGridTextColumn Header="Представление" Binding="{Binding ProductDisplayName}" Width="*" />
+                            <DataGridTextColumn Header="Штрихкод" Binding="{Binding Barcode}" Width="130" />
+                            <DataGridTextColumn Header="Код маркировки" Binding="{Binding ProductTypeCode}" Width="95" />
+                            <DataGridTextColumn Header="Вид маркировки" Binding="{Binding ProductTypeName}" Width="170" />
+                            <DataGridTextColumn Header="Группа" Binding="{Binding PrintGroupCode}" Width="65" />
+                            <DataGridTextColumn Header="Группа печати" Binding="{Binding PrintGroupName}" Width="120" />
+                            <DataGridTextColumn Header="Документов" Binding="{Binding DocumentCount}" Width="85" />
+                            <DataGridTextColumn Header="Строк" Binding="{Binding LineCount}" Width="65" />
+                            <DataGridTextColumn Header="Количество" Binding="{Binding Quantity, StringFormat={}{0:N3}}" Width="95" />
+                            <DataGridTextColumn Header="Средняя цена" Binding="{Binding AveragePrice, StringFormat={}{0:N2}}" Width="105" />
+                            <DataGridTextColumn Header="Сумма" Binding="{Binding Amount, StringFormat={}{0:N2}}" Width="110" />
+                        </DataGrid.Columns>
+                    </DataGrid>
+                </Grid>
+            </TabItem>
+
+            <TabItem x:Name="SalesPaymentsTab" Header="Оплаты">
+                <Grid Margin="8">
+                    <Grid.RowDefinitions><RowDefinition Height="Auto" /><RowDefinition Height="*" /></Grid.RowDefinitions>
+                    <TextBlock Margin="2,0,0,7" Foreground="{StaticResource MutedTextBrush}" Text="Суммы собраны по основным транзакциям оплат без повторного учёта распределений по позициям и группам печати." />
+                    <DataGrid Grid.Row="1" ItemsSource="{Binding SalesReport.Payments}" AutoGenerateColumns="False" IsReadOnly="True" CanUserAddRows="False" HeadersVisibility="Column" GridLinesVisibility="Horizontal" RowHeaderWidth="0">
+                        <DataGrid.Columns>
+                            <DataGridTextColumn Header="Предприятие" Binding="{Binding EnterpriseId}" Width="100" />
+                            <DataGridTextColumn Header="Транзакция" Binding="{Binding TransactionType, StringFormat=№{0}}" Width="95" />
+                            <DataGridTextColumn Header="Код вида оплаты" Binding="{Binding PaymentCode}" Width="130" />
+                            <DataGridTextColumn Header="Способ оплаты" Binding="{Binding PaymentName}" Width="*" />
+                            <DataGridTextColumn Header="Документов" Binding="{Binding DocumentCount}" Width="95" />
+                            <DataGridTextColumn Header="Транзакций" Binding="{Binding TransactionCount}" Width="95" />
+                            <DataGridTextColumn Header="Сумма" Binding="{Binding Amount, StringFormat={}{0:N2}}" Width="130" />
+                        </DataGrid.Columns>
+                    </DataGrid>
+                </Grid>
+            </TabItem>
+
+            <TabItem x:Name="SalesShiftsTab" Header="Смены">
+                <DataGrid Margin="8" ItemsSource="{Binding SalesReport.Shifts}" AutoGenerateColumns="False" IsReadOnly="True" CanUserAddRows="False" HeadersVisibility="Column" GridLinesVisibility="Horizontal" RowHeaderWidth="0">
+                    <DataGrid.Columns>
+                        <DataGridTextColumn Header="Предприятие" Binding="{Binding EnterpriseId}" Width="100" />
+                        <DataGridTextColumn Header="Рабочее место" Binding="{Binding Workstation}" Width="110" />
+                        <DataGridTextColumn Header="Смена" Binding="{Binding ShiftNumber}" Width="85" />
+                        <DataGridTextColumn Header="Открыта" Binding="{Binding OpenedText}" Width="155" />
+                        <DataGridTextColumn Header="Закрыта" Binding="{Binding ClosedText}" Width="155" />
+                        <DataGridTextColumn Header="Состояние" Binding="{Binding Status}" Width="*" />
+                        <DataGridTextColumn Header="Документов" Binding="{Binding DocumentCount}" Width="90" />
+                        <DataGridTextColumn Header="Возвратов" Binding="{Binding ReturnDocumentCount}" Width="85" />
+                        <DataGridTextColumn Header="По документам" Binding="{Binding NetSales, StringFormat={}{0:N2}}" Width="115" />
+                        <DataGridTextColumn Header="Программный №61" Binding="{Binding ProgramSalesText}" Width="120" />
+                        <DataGridTextColumn Header="ККТ №63" Binding="{Binding HardwareSalesText}" Width="110" />
+                        <DataGridTextColumn Header="Сверка" Binding="{Binding ReconciliationText}" Width="125" />
+                        <DataGridTextColumn Header="Транзакций" Binding="{Binding TransactionCount}" Width="95" />
+                    </DataGrid.Columns>
+                </DataGrid>
+            </TabItem>
+
+            <TabItem x:Name="SalesDiagnosticsTab" Header="Сверка">
+                <Grid Margin="8">
+                    <Grid.RowDefinitions><RowDefinition Height="Auto" /><RowDefinition Height="*" /></Grid.RowDefinitions>
+                    <TextBlock Margin="2,0,0,7" Foreground="{StaticResource MutedTextBrush}" TextWrapping="Wrap"
+                               Text="Контроль диапазона транзакций, завершённости документов, распределения по группам печати и совпадения итогов с оплатами." />
+                    <DataGrid Grid.Row="1" ItemsSource="{Binding SalesReport.Diagnostics}" AutoGenerateColumns="False" IsReadOnly="True" CanUserAddRows="False" HeadersVisibility="Column" GridLinesVisibility="Horizontal" RowHeaderWidth="0">
+                        <DataGrid.Columns>
+                            <DataGridTextColumn Header="Статус" Binding="{Binding Severity}" Width="105" />
+                            <DataGridTextColumn Header="Раздел" Binding="{Binding Category}" Width="170" />
+                            <DataGridTextColumn Header="Объект" Binding="{Binding Scope}" Width="210" />
+                            <DataGridTextColumn Header="Количество" Binding="{Binding Count}" Width="90" />
+                            <DataGridTextColumn Header="Объяснение" Binding="{Binding Message}" Width="*" ElementStyle="{StaticResource WrappingCellTextStyle}" />
+                        </DataGrid.Columns>
+                    </DataGrid>
+                </Grid>
+            </TabItem>
+
+            <TabItem x:Name="SalesKegsTab" Header="Кеги">
+                <Grid Margin="8">
+                    <Grid.RowDefinitions><RowDefinition Height="Auto" /><RowDefinition Height="*" /></Grid.RowDefinitions>
+                    <TextBlock Margin="2,0,0,7" Foreground="{StaticResource MutedTextBrush}" TextWrapping="Wrap"
+                               Text="Постановка и снятие кега, вскрытие и списание тары по операциям 18, 27–30. Код кега берётся из поля №33, объём — из №11." />
+                    <DataGrid Grid.Row="1" ItemsSource="{Binding SalesReport.Kegs}" AutoGenerateColumns="False" IsReadOnly="True" CanUserAddRows="False" HeadersVisibility="Column" GridLinesVisibility="Horizontal" RowHeaderWidth="0">
+                        <DataGrid.Columns>
+                            <DataGridTextColumn Header="Дата" Binding="{Binding DateText}" Width="130" />
+                            <DataGridTextColumn Header="Предприятие" Binding="{Binding EnterpriseId}" Width="95" />
+                            <DataGridTextColumn Header="Документ" Binding="{Binding DocumentNumber}" Width="80" />
+                            <DataGridTextColumn Header="Операция" Binding="{Binding OperationName}" Width="175" />
+                            <DataGridTextColumn Header="Товар" Binding="{Binding ProductName}" Width="180" />
+                            <DataGridTextColumn Header="Код кега / марки" Binding="{Binding KegCode}" Width="180" />
+                            <DataGridTextColumn Header="ГП" Binding="{Binding PrintGroupCode}" Width="55" />
+                            <DataGridTextColumn Header="Объём" Binding="{Binding Volume, StringFormat={}{0:N3}}" Width="85" />
+                            <DataGridTextColumn Header="Цена" Binding="{Binding Price, StringFormat={}{0:N2}}" Width="85" />
+                            <DataGridTextColumn Header="Сумма" Binding="{Binding Amount, StringFormat={}{0:N2}}" Width="95" />
+                            <DataGridTextColumn Header="Что означает объём" Binding="{Binding VolumeMeaning}" Width="*" />
+                            <DataGridTextColumn Header="Состояние" Binding="{Binding Status}" Width="130" />
+                        </DataGrid.Columns>
+                    </DataGrid>
+                </Grid>
+            </TabItem>
+
+            <TabItem x:Name="SalesAdjustmentsTab" Header="Скидки / НДС">
+                <TabControl Margin="8">
+                    <TabItem Header="Скидки и округления">
+                        <DataGrid ItemsSource="{Binding SalesReport.Adjustments}" AutoGenerateColumns="False" IsReadOnly="True" CanUserAddRows="False" HeadersVisibility="Column" GridLinesVisibility="Horizontal" RowHeaderWidth="0">
+                            <DataGrid.Columns>
+                                <DataGridTextColumn Header="Предприятие" Binding="{Binding EnterpriseId}" Width="100" />
+                                <DataGridTextColumn Header="Транзакция" Binding="{Binding TransactionType, StringFormat=№{0}}" Width="90" />
+                                <DataGridTextColumn Header="Вид" Binding="{Binding Name}" Width="*" />
+                                <DataGridTextColumn Header="ГП" Binding="{Binding PrintGroupCode}" Width="60" />
+                                <DataGridTextColumn Header="Документов" Binding="{Binding DocumentCount}" Width="90" />
+                                <DataGridTextColumn Header="Транзакций" Binding="{Binding TransactionCount}" Width="90" />
+                                <DataGridTextColumn Header="Сумма" Binding="{Binding Amount, StringFormat={}{0:N2}}" Width="110" />
+                            </DataGrid.Columns>
+                        </DataGrid>
+                    </TabItem>
+                    <TabItem Header="Налоги и НДС">
+                        <DataGrid ItemsSource="{Binding SalesReport.Taxes}" AutoGenerateColumns="False" IsReadOnly="True" CanUserAddRows="False" HeadersVisibility="Column" GridLinesVisibility="Horizontal" RowHeaderWidth="0">
+                            <DataGrid.Columns>
+                                <DataGridTextColumn Header="Предприятие" Binding="{Binding EnterpriseId}" Width="100" />
+                                <DataGridTextColumn Header="ГП" Binding="{Binding PrintGroupCode}" Width="60" />
+                                <DataGridTextColumn Header="Источник" Binding="{Binding Source}" Width="220" />
+                                <DataGridTextColumn Header="Ставка" Binding="{Binding Rate}" Width="90" />
+                                <DataGridTextColumn Header="Документов" Binding="{Binding DocumentCount}" Width="90" />
+                                <DataGridTextColumn Header="Сумма" Binding="{Binding Amount, StringFormat={}{0:N2}}" Width="120" />
+                            </DataGrid.Columns>
+                        </DataGrid>
+                    </TabItem>
+                </TabControl>
+            </TabItem>
+
+            <TabItem x:Name="SalesScenariosTab" Header="Справка">
+                <Grid Margin="8">
+                    <Grid.RowDefinitions><RowDefinition Height="Auto" /><RowDefinition Height="*" /></Grid.RowDefinitions>
+                    <TextBlock Margin="2,0,0,7" TextWrapping="Wrap" Foreground="{StaticResource MutedTextBrush}"
+                               Text="Справка не зависит от содержимого выбранного файла: отсутствующие операции и примеры руководства тоже остаются доступными. Колонка «Наличие» показывает, найден ли сценарий именно в текущем отчёте." />
+                    <TabControl x:Name="SalesScenarioTabs" Grid.Row="1">
+                        <TabItem Header="Виды документов и операций">
+                            <DataGrid ItemsSource="{Binding SalesReport.Operations}" AutoGenerateColumns="False" IsReadOnly="True" CanUserAddRows="False" HeadersVisibility="Column" GridLinesVisibility="Horizontal" RowHeaderWidth="0">
+                                <DataGrid.Columns>
+                                    <DataGridTextColumn Header="Код" Binding="{Binding OperationCode}" Width="55" />
+                                    <DataGridTextColumn Header="Операция / документ" Binding="{Binding OperationName}" Width="205" />
+                                    <DataGridTextColumn Header="Наличие" Binding="{Binding PresenceText}" Width="135" />
+                                    <DataGridTextColumn Header="Документов" Binding="{Binding DocumentCount}" Width="85" />
+                                    <DataGridTextColumn Header="Транзакций" Binding="{Binding TransactionCount}" Width="90" />
+                                    <DataGridTextColumn Header="Сумма" Binding="{Binding Total, StringFormat={}{0:N2}}" Width="100" />
+                                    <DataGridTextColumn Header="Как выгружается и что означает" Binding="{Binding Explanation}" Width="*" ElementStyle="{StaticResource WrappingCellTextStyle}" />
+                                </DataGrid.Columns>
+                            </DataGrid>
+                        </TabItem>
+                        <TabItem Header="Примеры и особые правила руководства">
+                            <DataGrid ItemsSource="{Binding SalesReport.DocumentationExamples}" AutoGenerateColumns="False" IsReadOnly="True" CanUserAddRows="False" HeadersVisibility="Column" GridLinesVisibility="Horizontal" RowHeaderWidth="0">
+                                <DataGrid.Columns>
+                                    <DataGridTextColumn Header="Раздел" Binding="{Binding Section}" Width="145" />
+                                    <DataGridTextColumn Header="Пример / правило" Binding="{Binding Title}" Width="205" ElementStyle="{StaticResource WrappingCellTextStyle}" />
+                                    <DataGridTextColumn Header="Транзакции" Binding="{Binding TransactionText}" Width="170" ElementStyle="{StaticResource WrappingCellTextStyle}" />
+                                    <DataGridTextColumn Header="Операции" Binding="{Binding OperationText}" Width="155" ElementStyle="{StaticResource WrappingCellTextStyle}" />
+                                    <DataGridTextColumn Header="Наличие" Binding="{Binding PresenceText}" Width="190" ElementStyle="{StaticResource WrappingCellTextStyle}" />
+                                    <DataGridTextColumn Header="Как читать и загружать" Binding="{Binding Explanation}" Width="*" ElementStyle="{StaticResource WrappingCellTextStyle}" />
+                                    <DataGridTextColumn Header="Источник" Binding="{Binding ManualReference}" Width="190" ElementStyle="{StaticResource WrappingCellTextStyle}" />
+                                </DataGrid.Columns>
+                            </DataGrid>
+                        </TabItem>
+                    </TabControl>
+                </Grid>
+            </TabItem>
+
+            <TabItem x:Name="TransactionsTab" Header="Транзакции">
+        <Grid>
             <Grid.ColumnDefinitions>
                 <ColumnDefinition x:Name="RecordsColumn" Width="655" MinWidth="300" />
                 <ColumnDefinition Width="27" />
@@ -364,12 +743,12 @@
                                 </Grid.ColumnDefinitions>
                                 <Border Height="34" Padding="7,0" Background="{StaticResource PrimarySoftBrush}" CornerRadius="3">
                                     <TextBlock VerticalAlignment="Center" TextTrimming="CharacterEllipsis" ToolTip="{Binding CodeDisplayText}">
-                                        <Run Foreground="{StaticResource PrimaryBrush}" Text="Код: " /><Run FontWeight="Bold" Foreground="{StaticResource PrimaryBrush}" Text="{Binding CodeDisplayText, Mode=OneWay}" />
+                                        <Run Foreground="{StaticResource PrimaryBrush}" Text="{Binding CodeLabel, Mode=OneWay}" /><Run FontWeight="Bold" Foreground="{StaticResource PrimaryBrush}" Text="{Binding CodeDisplayText, Mode=OneWay}" />
                                     </TextBlock>
                                 </Border>
                                 <Border Grid.Column="1" Height="34" Margin="6,0" Padding="7,0" Background="{StaticResource SurfaceAltBrush}" CornerRadius="3">
                                     <TextBlock VerticalAlignment="Center" TextTrimming="CharacterEllipsis" ToolTip="{Binding ProductNameDisplayText}">
-                                        <Run Foreground="#5B5B5B" Text="Наименование: " /><Run FontWeight="SemiBold" Text="{Binding ProductNameDisplayText, Mode=OneWay}" />
+                                        <Run Foreground="#5B5B5B" Text="{Binding ProductNameLabel, Mode=OneWay}" /><Run FontWeight="SemiBold" Text="{Binding ProductNameDisplayText, Mode=OneWay}" />
                                     </TextBlock>
                                 </Border>
                                 <Border Grid.Column="2" Height="34" Padding="7,0" Background="{StaticResource PrimarySoftBrush}" CornerRadius="3">
@@ -472,6 +851,15 @@
                                     <Setter Property="FontWeight" Value="Bold" />
                                     <Setter Property="Foreground" Value="{StaticResource MarkingBrush}" />
                                 </DataTrigger>
+                                <MultiDataTrigger>
+                                    <MultiDataTrigger.Conditions>
+                                        <Condition Binding="{Binding Number}" Value="32" />
+                                        <Condition Binding="{Binding DataContext.IsUploadFile, RelativeSource={RelativeSource AncestorType=Window}}" Value="False" />
+                                    </MultiDataTrigger.Conditions>
+                                    <Setter Property="Background" Value="{StaticResource MarkingSoftBrush}" />
+                                    <Setter Property="FontWeight" Value="Bold" />
+                                    <Setter Property="Foreground" Value="{StaticResource MarkingBrush}" />
+                                </MultiDataTrigger>
                                 <DataTrigger Binding="{Binding Severity}" Value="{x:Static core:IssueSeverity.Info}">
                                     <Setter Property="Background" Value="{StaticResource PrimarySoftBrush}" />
                                 </DataTrigger>
@@ -513,9 +901,11 @@
 
                 <Border x:Name="FullCellTextPanel" Grid.Row="3" Margin="0,5,0,0" Padding="7,5" Background="{StaticResource SurfaceAltBrush}" BorderThickness="0">
                     <Grid>
-                        <Grid.ColumnDefinitions><ColumnDefinition Width="135" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions>
-                        <TextBlock FontWeight="SemiBold" Text="Полный текст ячейки:" />
-                        <TextBox Grid.Column="1" MinHeight="34" MaxHeight="74" IsReadOnly="True" BorderThickness="0" Background="Transparent"
+                        <Grid.ColumnDefinitions><ColumnDefinition Width="Auto" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions>
+                        <TextBlock VerticalAlignment="Top" FontWeight="SemiBold" Text="Полный текст ячейки:" />
+                        <TextBox Grid.Column="1" Margin="12,0,0,0" Padding="0" MinHeight="0" MaxHeight="74"
+                                 VerticalAlignment="Top" VerticalContentAlignment="Top" HorizontalContentAlignment="Stretch"
+                                 TextAlignment="Left" IsReadOnly="True" BorderThickness="0" Background="Transparent"
                                  Text="{Binding DataContext.SelectedCellText, RelativeSource={RelativeSource AncestorType=Window}, Mode=OneWay}"
                                  TextWrapping="Wrap" VerticalScrollBarVisibility="Auto" />
                     </Grid>
@@ -578,6 +968,8 @@
                 </Expander>
             </Grid>
         </Grid>
+            </TabItem>
+        </TabControl>
 
         <Border Grid.Row="4" Margin="6" Panel.ZIndex="5" Background="{StaticResource SurfaceBrush}" CornerRadius="5">
             <Border.Style>
@@ -590,23 +982,39 @@
                     </Style.Triggers>
                 </Style>
             </Border.Style>
-            <StackPanel Width="480" MaxWidth="{Binding ActualWidth, RelativeSource={RelativeSource AncestorType=Window}}"
+            <StackPanel Width="760" MaxWidth="{Binding ActualWidth, RelativeSource={RelativeSource AncestorType=Window}}"
                         HorizontalAlignment="Center" VerticalAlignment="Center">
                 <Image Width="78" Height="78" Source="Assets/app-logo.png" Stretch="Uniform" />
                 <TextBlock Margin="0,16,0,0" HorizontalAlignment="Center" FontSize="22" FontWeight="SemiBold"
                            Text="Анализатор файла обмена Frontol" />
                 <TextBlock Margin="18,7" HorizontalAlignment="Center" TextAlignment="Center" TextWrapping="Wrap"
                            Foreground="{StaticResource MutedTextBrush}"
-                           Text="Откройте base.txt или перетащите файл в это окно. Программа покажет команды, поля, маркировку и ошибки формата." />
-                <Button MinWidth="170" Margin="0,10,0,0" HorizontalAlignment="Center" Padding="18,7"
-                        Click="OpenFile_Click" IsDefault="True">
-                    <StackPanel Orientation="Horizontal">
-                        <Path Style="{StaticResource ToolbarIcon}" Data="{StaticResource IconOpen}" />
-                        <TextBlock Text="Открыть файл…" />
-                    </StackPanel>
-                </Button>
+                           Text="Выберите направление обмена. После открытия программа включит подходящий интерфейс и справочник; при перетаскивании формат определяется автоматически." />
+                <Grid Margin="0,14,0,0">
+                    <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="14" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions>
+                    <Border Padding="16,14" Background="White" BorderBrush="#C9D7E5" BorderThickness="1" CornerRadius="5">
+                        <StackPanel>
+                            <TextBlock HorizontalAlignment="Center" FontSize="16" FontWeight="SemiBold" Text="Файл загрузки в Frontol" />
+                            <TextBlock Margin="0,5,0,10" TextAlignment="Center" TextWrapping="Wrap" Foreground="{StaticResource MutedTextBrush}"
+                                       Text="Учётная система → Frontol&#x0a;Команды $$$ и строки справочников" />
+                            <Button MinWidth="210" HorizontalAlignment="Center" Padding="14,7" Click="OpenUploadFile_Click" IsDefault="True">
+                                <StackPanel Orientation="Horizontal"><Path Style="{StaticResource ToolbarIcon}" Data="{StaticResource IconOpen}" /><TextBlock Text="Выбрать файл загрузки…" /></StackPanel>
+                            </Button>
+                        </StackPanel>
+                    </Border>
+                    <Border Grid.Column="2" Padding="16,14" Background="White" BorderBrush="#BFD7C6" BorderThickness="1" CornerRadius="5">
+                        <StackPanel>
+                            <TextBlock HorizontalAlignment="Center" FontSize="16" FontWeight="SemiBold" Text="Отчёт о продажах" />
+                            <TextBlock Margin="0,5,0,10" TextAlignment="Center" TextWrapping="Wrap" Foreground="{StaticResource MutedTextBrush}"
+                                       Text="Frontol → учётная система&#x0a;Транзакции продаж, оплат и смен" />
+                            <Button MinWidth="210" HorizontalAlignment="Center" Padding="14,7" Click="OpenSalesReport_Click">
+                                <StackPanel Orientation="Horizontal"><Path Style="{StaticResource ToolbarIcon}" Data="{StaticResource IconOpen}" /><TextBlock Text="Выбрать отчёт о продажах…" /></StackPanel>
+                            </Button>
+                        </StackPanel>
+                    </Border>
+                </Grid>
                 <TextBlock Margin="0,12,0,0" HorizontalAlignment="Center" Foreground="{StaticResource MutedTextBrush}"
-                           Text="Ctrl+O · последние файлы — в меню «Файл»" />
+                           Text="Ctrl+O — автоопределение · последние файлы — в меню «Файл»" />
             </StackPanel>
         </Border>
 

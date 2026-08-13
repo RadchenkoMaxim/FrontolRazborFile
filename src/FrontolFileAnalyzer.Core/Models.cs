@@ -19,6 +19,21 @@ public enum FrontolRecordKind
     Empty
 }
 
+public enum ExchangeFileKind
+{
+    UploadToFrontol,
+    SalesReportFromFrontol
+}
+
+public static class ExchangeFileKindExtensions
+{
+    public static string DisplayName(this ExchangeFileKind kind) => kind switch
+    {
+        ExchangeFileKind.SalesReportFromFrontol => "Отчёт о продажах: Frontol → учётная система",
+        _ => "Файл загрузки: учётная система → Frontol"
+    };
+}
+
 public sealed record AnalysisIssue(IssueSeverity Severity, string Message);
 
 public sealed record FrontolParseProgress(int ProcessedLines, int TotalLines, string Stage)
@@ -55,12 +70,14 @@ public sealed record CommandDefinition(
     string ManualReference,
     IReadOnlyList<FieldDefinition> Fields,
     IReadOnlyList<CommandVariant>? Variants = null,
-    int? VariantFieldNumber = null)
+    int? VariantFieldNumber = null,
+    string SyntaxPrefix = "$$$",
+    string? Category = null)
 {
     public bool HasVariants => Variants is { Count: > 0 };
     public bool HasFields => Fields.Count > 0 || HasVariants;
     public int MaximumFieldCount => HasVariants ? Variants!.Max(variant => variant.Fields.Count) : Fields.Count;
-    public string CommandText => $"$$${Name}";
+    public string CommandText => $"{SyntaxPrefix}{Name}";
     public string FieldCountText => HasVariants
         ? $"Вариантов: {Variants!.Count} · до {MaximumFieldCount} полей"
         : HasFields ? $"Полей: {Fields.Count}" : "Данных нет";
@@ -131,6 +148,8 @@ public sealed class ParsedRecord : INotifyPropertyChanged
     public required string RawText { get; init; }
     public required string Title { get; init; }
     public required string Summary { get; init; }
+    public ExchangeFileKind FileKind { get; init; } = ExchangeFileKind.UploadToFrontol;
+    public bool HasTerminatingDelimiter { get; init; }
     public string? CommandName { get; init; }
     public CommandDefinition? Definition { get; init; }
     public IReadOnlyList<AnalyzedField> Fields
@@ -175,6 +194,7 @@ public sealed class ParsedRecord : INotifyPropertyChanged
     {
         FrontolRecordKind.Header => "Заголовок",
         FrontolRecordKind.Command => "Команда",
+        FrontolRecordKind.Data when IsSalesReport => "Транзакция",
         FrontolRecordKind.Data => "Данные",
         FrontolRecordKind.Comment => "Комментарий",
         _ => "Пустая строка"
@@ -188,31 +208,41 @@ public sealed class ParsedRecord : INotifyPropertyChanged
         _ => "ОК"
     };
 
-    public string CommandText => string.IsNullOrEmpty(CommandName) ? string.Empty : $"$$${CommandName}";
+    public bool IsSalesReport => FileKind == ExchangeFileKind.SalesReportFromFrontol;
 
-    public string CodeText => RawValueAt(1);
+    public string CommandText => string.IsNullOrEmpty(CommandName)
+        ? string.Empty
+        : Definition?.CommandText ?? (IsSalesReport ? $"№{CommandName}" : $"$$${CommandName}");
 
-    public string BarcodeText => RawValueAt(2);
+    public string CodeText => RawValueAt(IsSalesReport ? 8 : 1);
 
-    public string PriceText => RawValueAt(5);
-    public string ProductNameText => RawValueAt(3);
+    public string BarcodeText => RawValueAt(IsSalesReport ? 19 : 2);
+
+    public string PriceText => RawValueAt(IsSalesReport ? 10 : 5);
+    public string ProductNameText => IsSalesReport ? Definition?.DisplayName ?? string.Empty : RawValueAt(3);
+
+    public string CodeLabel => IsSalesReport ? "Идентификатор: " : "Код: ";
+    public string ProductNameLabel => IsSalesReport ? "Транзакция: " : "Наименование: ";
 
     public string CodeDisplayText => IsProductRecord ? EmptyAsNotProvided(CodeText) : CodeText;
     public string BarcodeDisplayText => IsProductRecord ? EmptyAsNotProvided(BarcodeText) : BarcodeText;
     public string PriceDisplayText => IsProductRecord ? EmptyAsNotProvided(PriceText) : PriceText;
     public string ProductNameDisplayText => IsProductRecord ? EmptyAsNotProvided(ProductNameText) : ProductNameText;
 
-    public bool IsProductCommand =>
-        CommandName?.Contains("QUANTITY", StringComparison.OrdinalIgnoreCase) == true;
+    public bool IsProductCommand => IsSalesReport
+        ? FrontolSalesTransactionCatalog.IsProductTransaction(CommandName)
+        : CommandName?.Contains("QUANTITY", StringComparison.OrdinalIgnoreCase) == true;
 
     public bool IsProductRecord =>
         Kind == FrontolRecordKind.Data &&
         IsProductCommand &&
-        FieldCount >= 55;
+        (IsSalesReport || FieldCount >= 55);
 
     public string SectionGroup => Kind switch
     {
         FrontolRecordKind.Header or FrontolRecordKind.Comment or FrontolRecordKind.Empty => "0|Структура файла",
+        _ when IsSalesReport && Definition?.Category is { Length: > 0 } category => category,
+        _ when IsSalesReport => "4|Прочие транзакции",
         _ when IsProductCommand => "1|Товары",
         _ => "2|Служебные команды"
     };
@@ -220,7 +250,8 @@ public sealed class ParsedRecord : INotifyPropertyChanged
     public string CommandGroup => Kind switch
     {
         FrontolRecordKind.Header or FrontolRecordKind.Comment or FrontolRecordKind.Empty => $"{KindText}",
-        _ when !string.IsNullOrWhiteSpace(CommandName) && Definition is not null => $"$$${CommandName} — {Definition.DisplayName}",
+        _ when !string.IsNullOrWhiteSpace(CommandName) && Definition is not null => $"{Definition.CommandText} — {Definition.DisplayName}",
+        _ when !string.IsNullOrWhiteSpace(CommandName) && IsSalesReport => $"№{CommandName} — назначение не описано",
         _ when !string.IsNullOrWhiteSpace(CommandName) => $"$$${CommandName} — назначение не описано",
         _ => "Без команды"
     };
@@ -234,7 +265,7 @@ public sealed class ParsedRecord : INotifyPropertyChanged
                 return null;
             }
 
-            var value = RawValueAt(55).Trim();
+            var value = RawValueAt(IsSalesReport ? 32 : 55).Trim();
             return value.Length == 0 ? "0" : value;
         }
     }
@@ -249,6 +280,11 @@ public sealed class ParsedRecord : INotifyPropertyChanged
     {
         get
         {
+            if (Kind == FrontolRecordKind.Data && IsSalesReport)
+            {
+                return Summary;
+            }
+
             if (Kind == FrontolRecordKind.Data &&
                 IsProductCommand &&
                 FieldCount >= 3)
@@ -261,14 +297,29 @@ public sealed class ParsedRecord : INotifyPropertyChanged
     }
 
     public string DetailText => Issues.Count == 0
-        ? Definition?.Description ?? "Служебная строка файла обмена."
+        ? BuildDetailText()
         : string.Join(Environment.NewLine, Issues.Select(issue => $"• {issue.Message}"));
 
     public string SearchText => _searchText ??= string.Join(' ', new[]
         { LineNumber.ToString(), KindText, CommandName, Title, Summary, RawText, CodeText, ContentText, ProductTypeText, BarcodeText, PriceText }
         .Where(value => !string.IsNullOrWhiteSpace(value)));
 
+    public string GetRawValue(int number) => RawValueAt(number);
+
     private static string EmptyAsNotProvided(string value) => string.IsNullOrEmpty(value) ? "не передано" : value;
+
+    private string BuildDetailText()
+    {
+        var description = Definition?.Description ?? "Служебная строка файла обмена.";
+        if (!IsSalesReport || Kind != FrontolRecordKind.Data)
+        {
+            return description;
+        }
+
+        return HasTerminatingDelimiter
+            ? $"{description}{Environment.NewLine}Строка заканчивается техническим разделителем «;»; он не является полем №45."
+            : $"{description}{Environment.NewLine}Завершающий разделитель «;» в исходной строке отсутствует; поля при этом разобраны по позициям.";
+    }
 
     private string RawValueAt(int number)
     {
@@ -291,6 +342,9 @@ public sealed class AnalysisDocument
     public required string FilePath { get; init; }
     public required string EncodingName { get; init; }
     public required IReadOnlyList<ParsedRecord> Records { get; init; }
+    public ExchangeFileKind FileKind { get; init; } = ExchangeFileKind.UploadToFrontol;
+
+    public string FileKindText => FileKind.DisplayName();
 
     public int CommandCount => Records.Count(record => record.Kind == FrontolRecordKind.Command);
     public int DataRecordCount => Records.Count(record => record.Kind == FrontolRecordKind.Data);

@@ -25,6 +25,7 @@ public partial class StatisticsWindow : Window
     public StatisticsWindow(IReadOnlyList<ParsedRecord> records, int changeCount)
     {
         ArgumentNullException.ThrowIfNull(records);
+        var salesReport = records.Any(record => record.FileKind == ExchangeFileKind.SalesReportFromFrontol);
 
         var productRows = records
             .Where(record => record.Kind == FrontolRecordKind.Data && record.IsProductCommand)
@@ -32,7 +33,10 @@ public partial class StatisticsWindow : Window
 
         var serviceRowCount = records.Count(record =>
             record.Kind == FrontolRecordKind.Data && !record.IsProductCommand);
-        var commandCount = records.Count(record => record.Kind == FrontolRecordKind.Command);
+        var commandCount = salesReport
+            ? records.Where(record => record.Kind == FrontolRecordKind.Data && !string.IsNullOrWhiteSpace(record.CommandName))
+                .Select(record => record.CommandName).Distinct(StringComparer.OrdinalIgnoreCase).Count()
+            : records.Count(record => record.Kind == FrontolRecordKind.Command);
         var errorRowCount = records.Count(record => record.Severity == IssueSeverity.Error);
         var warningRowCount = records.Count(record => record.Severity == IssueSeverity.Warning);
         var normalizedChangeCount = Math.Max(0, changeCount);
@@ -40,9 +44,9 @@ public partial class StatisticsWindow : Window
         Cards =
         [
             new StatisticCard("Всего строк", records.Count, BlueAccent),
-            new StatisticCard("Товарных строк", productRows.Length, GreenAccent),
-            new StatisticCard("Служебных", serviceRowCount, GrayAccent),
-            new StatisticCard("Команд", commandCount, BlueAccent),
+            new StatisticCard(salesReport ? "Товарных операций" : "Товарных строк", productRows.Length, GreenAccent),
+            new StatisticCard(salesReport ? "Других транзакций" : "Служебных", serviceRowCount, GrayAccent),
+            new StatisticCard(salesReport ? "Типов транзакций" : "Команд", commandCount, BlueAccent),
             new StatisticCard("Ошибок (строк)", errorRowCount, RedAccent),
             new StatisticCard("Предупр. (строк)", warningRowCount, YellowAccent),
             new StatisticCard("Изменений", normalizedChangeCount, YellowAccent)
@@ -69,18 +73,23 @@ public partial class StatisticsWindow : Window
             .Where(record => !string.IsNullOrWhiteSpace(record.CommandName))
             .GroupBy(record => record.CommandName!, StringComparer.OrdinalIgnoreCase)
             .Select(group => new CommandStatisticRow(
-                group.Key,
+                group.First().CommandText,
                 group.Count(record => record.Kind == FrontolRecordKind.Data),
                 group.Count(record => record.Severity == IssueSeverity.Error),
                 group.Count(record => record.Severity == IssueSeverity.Warning)))
             .OrderByDescending(row => row.DataRowCount)
-            .ThenBy(row => row.Name, StringComparer.OrdinalIgnoreCase)
+            .ThenBy(row => row.DisplayName, StringComparer.OrdinalIgnoreCase)
             .ToArray();
 
         MarkingSummary = $"{MarkingRows.Count:N0} видов";
-        CommandSummary = $"{CommandRows.Count:N0} уникальных";
+        CommandSummary = salesReport ? $"{CommandRows.Count:N0} типов" : $"{CommandRows.Count:N0} уникальных";
+        SummarySubtitle = salesReport
+            ? "Состав отчёта, распределение маркировки и диагностика транзакций"
+            : "Состав файла, распределение маркировки и диагностика команд";
+        EntitySectionTitle = salesReport ? "Типы транзакций" : "Команды файла";
 
         InitializeComponent();
+        Title = salesReport ? "Сводная статистика отчёта о продажах Frontol" : "Сводная статистика файла загрузки Frontol";
         DataContext = this;
         SourceInitialized += (_, _) => ConstrainToWorkingArea();
     }
@@ -90,6 +99,8 @@ public partial class StatisticsWindow : Window
     public IReadOnlyList<CommandStatisticRow> CommandRows { get; }
     public string MarkingSummary { get; }
     public string CommandSummary { get; }
+    public string SummarySubtitle { get; }
+    public string EntitySectionTitle { get; }
 
     private void Window_Loaded(object sender, RoutedEventArgs e)
     {
@@ -240,10 +251,7 @@ public sealed record MarkingStatisticRow(string Code, string Name, int Count, do
 }
 
 public sealed record CommandStatisticRow(
-    string Name,
+    string DisplayName,
     int DataRowCount,
     int ErrorCount,
-    int WarningCount)
-{
-    public string DisplayName => "$$$" + Name;
-}
+    int WarningCount);

@@ -20,13 +20,22 @@ public partial class CommandReferenceWindow : Window, INotifyPropertyChanged
     private CommandVariant? _selectedVariant;
     private IReadOnlyList<CommandVariant> _availableVariants = [];
     private IReadOnlyList<FieldDefinition> _displayedFields = [];
+    private readonly IReadOnlyList<CommandDefinition> _definitions;
+    private readonly ExchangeFileKind _fileKind;
 
-    public CommandReferenceWindow()
+    public CommandReferenceWindow(ExchangeFileKind fileKind = ExchangeFileKind.UploadToFrontol)
     {
+        _fileKind = fileKind;
+        _definitions = fileKind == ExchangeFileKind.SalesReportFromFrontol
+            ? FrontolSalesTransactionCatalog.All
+            : FrontolCommandCatalog.All;
         InitializeComponent();
-        CommandsView = CollectionViewSource.GetDefaultView(FrontolCommandCatalog.All);
+        Title = fileKind == ExchangeFileKind.SalesReportFromFrontol
+            ? "Транзакции и поля отчёта о продажах Frontol 6"
+            : "Команды и поля загрузки Frontol 6";
+        CommandsView = CollectionViewSource.GetDefaultView(_definitions);
         CommandsView.Filter = FilterCommand;
-        SelectedCommand = FrontolCommandCatalog.All.FirstOrDefault();
+        SelectedCommand = _definitions.FirstOrDefault();
         DataContext = this;
         SourceInitialized += (_, _) => ConstrainToWorkingArea();
     }
@@ -34,7 +43,14 @@ public partial class CommandReferenceWindow : Window, INotifyPropertyChanged
     public event PropertyChangedEventHandler? PropertyChanged;
 
     public ICollectionView CommandsView { get; }
-    public string CoverageText => $"Встроено команд: {FrontolCommandCatalog.All.Count}";
+    public string CoverageText => _fileKind == ExchangeFileKind.SalesReportFromFrontol
+        ? $"Встроено типов транзакций: {_definitions.Count} · для каждого объяснены поля №1-44"
+        : $"Встроено команд: {_definitions.Count}";
+    public string SearchLabel => _fileKind == ExchangeFileKind.SalesReportFromFrontol ? "Поиск транзакции:" : "Поиск команды:";
+    public string CollectionLabel => _fileKind == ExchangeFileKind.SalesReportFromFrontol ? "Транзакции выгрузки" : "Команды загрузки";
+    public string EmptyDefinitionText => _fileKind == ExchangeFileKind.SalesReportFromFrontol
+        ? "Для этого типа транзакции нет отдельных полей."
+        : "Эта команда не требует строк данных.";
     public IReadOnlyList<CommandVariant> AvailableVariants => _availableVariants;
     public IReadOnlyList<FieldDefinition> DisplayedFields => _displayedFields;
     public bool HasDisplayedFields => _displayedFields.Count > 0;

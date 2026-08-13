@@ -20,7 +20,7 @@
                     <ColumnDefinition Width="Auto" />
                     <ColumnDefinition Width="*" />
                 </Grid.ColumnDefinitions>
-                <TextBlock Margin="0,0,8,0" VerticalAlignment="Center" FontWeight="SemiBold" Text="Поиск команды:" />
+                <TextBlock Margin="0,0,8,0" VerticalAlignment="Center" FontWeight="SemiBold" Text="{Binding SearchLabel}" />
                 <TextBox x:Name="SearchBox" Grid.Column="1" MinWidth="120" MaxWidth="330"
                          HorizontalAlignment="Stretch" TextChanged="SearchBox_TextChanged" />
             </Grid>
@@ -33,7 +33,7 @@
                 <ColumnDefinition Width="*" MinWidth="240" />
             </Grid.ColumnDefinitions>
 
-            <GroupBox Header="Команды загрузки" Padding="4">
+            <GroupBox Header="{Binding CollectionLabel}" Padding="4">
                 <ListView ItemsSource="{Binding CommandsView}" SelectedItem="{Binding SelectedCommand}"
                           BorderThickness="0" ScrollViewer.HorizontalScrollBarVisibility="Disabled">
                     <ListView.ItemTemplate>
@@ -116,7 +116,7 @@
                         </DataGrid.Columns>
                     </DataGrid>
                     <TextBlock Margin="12" HorizontalAlignment="Center" VerticalAlignment="Center"
-                               FontSize="16" Foreground="#666666" Text="Эта команда не требует строк данных."
+                               FontSize="16" Foreground="#666666" Text="{Binding EmptyDefinitionText}"
                                TextAlignment="Center" TextWrapping="Wrap">
                         <TextBlock.Style>
                             <Style TargetType="TextBlock">
